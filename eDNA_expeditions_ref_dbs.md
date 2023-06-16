@@ -4,6 +4,7 @@
 The PacMAN pipeline uses a Bowtie-2 - BLCA algorithm for the first level of taxonomic assignment with a reference database. This works best if the reference database is cut to the region of interest. Therefore to run the eDNA expeditions samples, a reference database was built for each target loci, using the [CRABS creating reference databases workflow](https://github.com/gjeunen/reference_database_creator). 
 
 The reference database creator can download sequences directly from NCBI based on a word search, or alternatively can directly download the mitofish database. The workflow consists of 
+
 1. Downloading the ncbi taxonomic database 
 2. Downloading the target reference database based on a word search
 3. Searching for the target primers in the downloaded sequences
@@ -100,16 +101,14 @@ The different loci analysed in the eDNA expeditions project and the reference da
 |Mimammal-UEB  |  GG**RY**TGGT**H**AATTTCGTGCCAGC    | CATAGTG**R**GGTATCTAATC**Y**CAGTTTG | NCBI | 12S_ncbi_mimammals_pga.fasta |
 | Teleo - 12S | ACACCGCCCGTCACTCT | CTTCCGGTACACTTACCATG | NCBI | 12S_ncbi_teleo_pga.fasta |
 | Leray - COI | GGWACWGGWTGAACWGTWTAYCCYCC | TAIACYTCIGGRTGICCRAARAAYCA | MIDORI | no searches made MIDORI_UNIQ_SP_NUC_GB246_CO1_QIIME.fasta |
+| Leray - COI | GGWACWGGWTGAACWGTWTAYCCYCC | TAIACYTCIGGRTGICCRAARAAYCA | NCBI | coi_leray_pga.fasta |
 | Vert - 16S | AGACGAGAAGACCCYdTGGAGCTT | GATCCAACATCGAGGTCGTAA | NCBI | 16S_ncbi_vert_pga.fasta |
 
 For Mifish and Mimammal the primers used for searching the reference databases and the sequences were a consensus primer from the different versions available. In bold are marked the non-specific basepairs due to building this consensus sequence. 
 
 It is also possible to build the reference database using the mitofish database. In this case we used a search of NCBI.
 
-
 ## Sequence and taxonomy files
-
-
 
 The setup steps consist of downloading the databases of choice and the taxonomic dump of ncbi.
 
@@ -117,12 +116,11 @@ The setup steps consist of downloading the databases of choice and the taxonomic
 
 ```
 crabs db_download --source taxonomy
-
 ```
 
 ### Sequences
 
-Mifish and teleo (221918 sequences collected)
+Mifish and teleo (221,918 sequences collected)
 
 ```
 ./crabs db_download 
@@ -133,28 +131,29 @@ Mifish and teleo (221918 sequences collected)
 --keep_original yes 
 --email s@gmail.com 
 --batchsize 5000
-
 ```
 
-A query for mammals was made separately as a trial though the sequences could have been extracted also from the previous download. A total of 321306 sequences were collected.
+A query for mammals was made separately as a trial though the sequences could have been extracted also from the previous download. A total of 321,306 sequences were collected.
 
 ```
-
 12S[All Fields] AND Mammalia[Organism] AND ("1"[SLEN] : "50000"[SLEN])  
-
-```
-And the same for 16S, the query resulted in about 445298 sequences downloaded.
-
 ```
 
+And the same for 16S, the query resulted in about 445,298 sequences downloaded.
+
+```
 16S[All Fields] AND "Eukaryota"[Organism] AND ("1"[SLEN] : "50000"[SLEN]) AND mitochondrial[All Fields]
+```
 
+For COI, this resulted in 3,445,822 downloaded:
+
+```
+COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] cytochrome oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])
 ```
 
 ## Extract amplicon sequences
 
 According to the github instructions the amplicon sequences were extracted with the following commands:
-
 
 ```
 ./crabs insilico_pcr 
@@ -178,20 +177,18 @@ Pairwise global alignment to database is performed to find also target sequences
 --percid 0.8 
 --coverage 0.8 
 --filter_method relaxed
-
 ```
-
 
 And likewise for mimammal, teleo and 16S using the 16S database. The number of sequences remaining after the pcr are:
 
-
 | Biomarker| ref db |downloaded | PCR | PGA | 
 |---|---|---|---|---|
-| Mifish-UE | ncbi |221918 | 64025 | 85358 |
-| Mimammal-UEB | ncbi | 321306 | 140778 | 174006 |
-| Teleo | ncbi | (same as mifish) | 62158 | 89796 |
-| 16S | ncbi|445298 |  274324 | 322700|
-| Mitofish-Mifish | mitofish | 796239  | 16786 | 31441 |
+| Mifish-UE | ncbi |221,918 | 64,025 | 85,358 |
+| Mimammal-UEB | ncbi | 321,306 | 140,778 | 174,006 |
+| Teleo | ncbi | (same as mifish) | 62,158 | 89,796 |
+| 16S | ncbi| 445,298 |  274,324 | 322,700|
+| COI | ncbi | 3,445,822 | 227,381 | 3,440,603 |
+| Mitofish-Mifish | mitofish | 796,239  | 16,786 | 31,441 |
 
 Mitofish added here for comparison, but in the trial data analysis runs, the ncbi extracted data was used. 
 
@@ -207,7 +204,6 @@ Next the taxonomy was assigned using the downloaded ncbi taxonomy dump.
 --taxid /home/ubuntu/data/databases/ncbi/taxonomy20230224/nodes.dmp 
 --name /home/ubuntu/data/databases/ncbi/taxonomy20230224/names.dmp 
 --missing 12S_ncbi_mifish_pga_missing_taxa.tsv
-
 ```
 
 No other cleanup was done for the reference files, but is available in the crabs workflow. 
@@ -220,6 +216,4 @@ The taxonomy file was formatted for the PacMAN pipeline with the following comma
 awk -F'\t' '{OFS="\t"; $10=$3";"$4";"$5";"$6";"$7";"$8";"$9; print}' 12S_ncbi_mifish_pga_taxa.tsv > 12S_ncbi_mifish_pga_pacman.tsv
 
 cut -f1,10 12S_ncbi_mifish_pga_pacman.tsv > 12S_ncbi_mifish_pga_taxa_pacmanformat.tsv
-
 ```
-
