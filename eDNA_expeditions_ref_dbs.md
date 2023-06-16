@@ -148,7 +148,7 @@ And the same for 16S, the query resulted in about 445,298 sequences downloaded.
 For COI, this resulted in 3,445,822 downloaded:
 
 ```
-COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] cytochrome oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])
+COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])
 ```
 
 ## Extract amplicon sequences
