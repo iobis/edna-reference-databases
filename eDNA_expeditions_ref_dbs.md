@@ -145,10 +145,10 @@ And the same for 16S, the query resulted in about 445,298 sequences downloaded.
 16S[All Fields] AND "Eukaryota"[Organism] AND ("1"[SLEN] : "50000"[SLEN]) AND mitochondrial[All Fields]
 ```
 
-For COI, this resulted in 3,445,822 downloaded:
+For COI, this resulted in 4,571,767 downloaded:
 
 ```
-COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])
+COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR cytochrome c oxidase subunit I[All Fields] OR cytochrome c oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])
 ```
 
 ## Extract amplicon sequences
@@ -187,7 +187,7 @@ And likewise for mimammal, teleo and 16S using the 16S database. The number of s
 | Mimammal-UEB | ncbi | 321,306 | 140,778 | 174,006 |
 | Teleo | ncbi | (same as mifish) | 62,158 | 89,796 |
 | 16S | ncbi| 445,298 |  274,324 | 322,700|
-| COI | ncbi | 3,445,822 | 227,381 | 3,440,603 |
+| COI | ncbi | 4,571,767 | 383,232 | 4,552,087 |
 | Mitofish-Mifish | mitofish | 796,239  | 16,786 | 31,441 |
 
 Mitofish added here for comparison, but in the trial data analysis runs, the ncbi extracted data was used. 
