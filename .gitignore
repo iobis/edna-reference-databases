@@ -1,0 +1,6 @@
+.DS_Store
+*.tsv
+*.fasta
+*.yml
+*.dmp
+*.accession2taxid
