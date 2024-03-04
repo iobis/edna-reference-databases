@@ -13,6 +13,10 @@ The reference database creator can download sequences directly from NCBI based o
 
 This document shows the searches and analyses made in March 2023 to build the reference databases.
 
+## Script
+
+Execute `run.sh` to run the entire workflow.
+
 ## Set up 
 
 The crabs workflow was downloaded based on the instructions in Manual Installation section.  
