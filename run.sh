@@ -11,9 +11,11 @@ primer_coi_r="TAIACYTCIGGRTGICCRAARAAYCA"
 primer_16s_f="AGACGAGAAGACCCYdTGGAGCTT"
 primer_16s_r="GATCCAACATCGAGGTCGTAA"
 
-threads=4
+threads=6
 
+if ! [ -f nucl_gb.accession2taxid ]; then
 crabs db_download --source taxonomy
+fi
 
 # crabs db_download --source ncbi --database nucleotide --query '12S[All Fields] AND mitochondrial[All Fields] AND ("1"[SLEN] : "50000"[SLEN])' --output 12s_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
 # crabs db_download --source ncbi --database nucleotide --query '16S[All Fields] AND "Eukaryota"[Organism] AND ("1"[SLEN] : "50000"[SLEN]) AND mitochondrial[All Fields]' --output 16s_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
