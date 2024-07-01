@@ -4,3 +4,5 @@
 *.yml
 *.dmp
 *.accession2taxid
+output*
+__pycache__
