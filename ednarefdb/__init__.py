@@ -30,13 +30,27 @@ class DatabaseBuilder:
     def __init__(self, working_dir: str, environment: str = "conda"):
         self.working_dir = working_dir
         self.environment = environment
+        self.set_shell_config()
 
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir)
 
+    def set_shell_config(self):
+        shell = os.environ.get("SHELL")
+        if shell:
+            shell_name = os.path.basename(shell)
+            if shell_name == "zsh":
+                self.shell_config = "~/.zshrc"
+            elif shell_name == "bash":
+                self.shell_config = "~/.bashrc"
+            else:
+                raise ValueError(f"Unsupported shell: {shell_name}")
+        else:
+            raise RuntimeError("Could not determine shell")
+
     def run_command_conda(self, command):
         logging.info(command)
-        subprocess.run(f"source ~/.zshrc && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable="/bin/bash")
+        subprocess.run(f"source {self.shell_config} && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable="/bin/bash")
 
     def run_command_docker(self, command):
         logging.info(command)
