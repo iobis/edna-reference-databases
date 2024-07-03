@@ -19,7 +19,7 @@ fi
 
 # crabs db_download --source ncbi --database nucleotide --query '12S[All Fields] AND mitochondrial[All Fields] AND ("1"[SLEN] : "50000"[SLEN])' --output 12s_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
 # crabs db_download --source ncbi --database nucleotide --query '16S[All Fields] AND "Eukaryota"[Organism] AND ("1"[SLEN] : "50000"[SLEN]) AND mitochondrial[All Fields]' --output 16s_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
-crabs db_download --source ncbi --database nucleotide --query 'COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR cytochrome c oxidase subunit I[All Fields] OR cytochrome c oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])' --output coi_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
+crabs db_download --source ncbi --database nucleotide --query '(COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR cytochrome c oxidase subunit I[All Fields] OR cytochrome c oxidase subunit 1[All Fields] OR COX1[All Fields]) AND ("50"[SLEN] : "50000"[SLEN])' --output coi_ncbi_1_50000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
 
 # crabs insilico_pcr --threads "$threads" --input coi_ncbi_1_50000.fasta --output coi_ncbi.fasta --fwd "$primer_coi_f" --rev "$primer_coi_r" --error 4.5
 # crabs insilico_pcr --threads "$threads" --input 12s_ncbi_1_50000.fasta --output 12s_ncbi_mifish.fasta --fwd "$primer_12s_mifish_f" --rev "$primer_12s_mifish_r" --error 4.5

@@ -17,8 +17,8 @@ threads=4
 
 # crabs db_download --source taxonomy
 
-# crabs db_download --source ncbi --database nucleotide --query '12S[All Fields] AND ribosomal[All Fields]  AND ("1"[SLEN] : "5000"[SLEN])' --output 12s_ncbi_1_5000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
-# crabs db_download --source ncbi --database nucleotide --query '16S[All Fields] AND ribosomal[All Fields]  AND ("1"[SLEN] : "5000"[SLEN])' --output 16s_ncbi_1_5000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
+# crabs db_download --source ncbi --database nucleotide --query '12S[All Fields] AND ribosomal[All Fields] AND ("1"[SLEN] : "5000"[SLEN])' --output 12s_ncbi_1_5000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
+# crabs db_download --source ncbi --database nucleotide --query '16S[All Fields] AND ribosomal[All Fields] AND ("1"[SLEN] : "5000"[SLEN])' --output 16s_ncbi_1_5000.fasta --keep_original yes --email s@gmail.com --batchsize 5000
 
 # cat 12s_ncbi_1_5000.fasta > 12s_16s_ncbi_1_5000_combined.fasta
 # echo "" >> 12s_16s_ncbi_1_5000_combined.fasta
