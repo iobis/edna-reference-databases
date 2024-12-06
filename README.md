@@ -1,4 +1,9 @@
 # edna-reference-databases
+## Releases
+### 20231101
+
+:link: [20231101.zip](https://edna-reference-databases.s3.us-east-1.amazonaws.com/20231101.zip)
+
 ## Dependencies
 
 ```bash
