@@ -16,7 +16,9 @@ class PrimerSet:
 @dataclass
 class NucleotideDataset:
     name: str
-    query: str
+    query: str = None
+    path: str = None
+    crabs_path: str = None
 
 
 @dataclass
@@ -41,20 +43,26 @@ class DatabaseBuilder:
             shell_name = os.path.basename(shell)
             if shell_name == "zsh":
                 self.shell_config = "~/.zshrc"
+                self.shell_executable = "/bin/zsh"
             elif shell_name == "bash":
                 self.shell_config = "~/.bashrc"
+                self.shell_executable = "/bin/bash"
             else:
                 raise ValueError(f"Unsupported shell: {shell_name}")
         else:
             raise RuntimeError("Could not determine shell")
 
+    def run_command_base(self, command):
+        logging.info(command)
+        subprocess.run(command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
+
     def run_command_conda(self, command):
         logging.info(command)
-        subprocess.run(f"source {self.shell_config} && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable="/bin/bash")
+        subprocess.run(f"source {self.shell_config} && source activate base && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
     def run_command_docker(self, command):
         logging.info(command)
-        subprocess.run(f"docker run --rm -it -v $(pwd):/data --workdir='/data' quay.io/swordfish/crabs:0.1.4 {command}", cwd=self.working_dir, shell=True, executable="/bin/bash")
+        subprocess.run(f"docker run --rm -it -v $(pwd):/data --workdir='/data' quay.io/swordfish/crabs:0.1.4 {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
     def run_command(self, command):
         if self.environment == "conda":
@@ -62,7 +70,7 @@ class DatabaseBuilder:
         elif self.environment == "docker":
             self.run_command_docker(command)
         else:
-            raise ValueError("Invalid environment")
+            self.run_command_base(command)
 
     def cleanup_files(self, files: list[str]):
         for file in files:
@@ -74,7 +82,7 @@ class DatabaseBuilder:
     def ncbi_download_taxonomy(self):
 
         logging.info(f"Downloading NCBI taxonomy to {self.working_dir}")
-        self.run_command("crabs db_download --source taxonomy")
+        self.run_command("crabs --download-taxonomy")
 
     def ncbi_download_nucleotide(self, dataset: NucleotideDataset):
 
@@ -85,17 +93,33 @@ class DatabaseBuilder:
         ])
 
         self.run_command(f"""
-            crabs db_download \
-            --source ncbi \
+            crabs --download-ncbi \
             --database nucleotide \
             --query '{dataset.query}' \
             --output {dataset.name}.fasta \
-            --keep_original yes \
             --email helpdesk@obis.org \
             --batchsize 5000
         """)
 
-    def pcr(self, dataset: str, primer_set: PrimerSet):
+    def import_nucleotide(self, dataset: NucleotideDataset):
+
+        logging.info(f"Importing fasta for {dataset.name}")
+
+        output_path = f"{dataset.name}.crabs.txt" if dataset.crabs_path is None else dataset.crabs_path
+        dataset_path = f"{dataset.name}.fasta" if dataset.path is None else dataset.path
+
+        self.run_command(f"""
+            crabs --import \
+            --import-format ncbi \
+            --input {dataset_path} \
+            --names names.dmp \
+            --nodes nodes.dmp \
+            --acc2tax nucl_gb.accession2taxid \
+            --output {output_path} \
+            --ranks 'superkingdom;phylum;class;order;family;genus;species'
+        """)
+
+    def pcr(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
         logging.info(f"Performing in silico PCR for {dataset.name}_{primer_set.name}")
 
@@ -103,13 +127,14 @@ class DatabaseBuilder:
             f"{dataset.name}_{primer_set.name}.fasta"
         ])
 
+        dataset_path = f"{dataset.name}.crabs.txt"
+
         self.run_command(f"""
-            crabs insilico_pcr \
-            --input {dataset.name}.fasta \
+            crabs --in-silico-pcr \
+            --input {dataset_path} \
             --output {dataset.name}_{primer_set.name}.fasta \
-            --fwd {primer_set.fwd} \
-            --rev {primer_set.rev} \
-            --error 4.5
+            --forward {primer_set.fwd} \
+            --reverse {primer_set.rev}
         """)
 
     def pga(self, dataset: NucleotideDataset, primer_set: PrimerSet, percid: float = 0.8, coverage: float = 0.8):
@@ -121,16 +146,14 @@ class DatabaseBuilder:
         ])
 
         self.run_command(f"""
-            crabs pga \
+            crabs --pairwise-global-alignment \
             --input {dataset.name}.fasta \
             --output {dataset.name}_{primer_set.name}_pga.fasta \
-            --database {dataset.name}_{primer_set.name}.fasta \
-            --fwd {primer_set.fwd} \
-            --rev {primer_set.rev} \
-            --speed medium \
-            --percid {percid} \
-            --coverage {coverage} \
-            --filter_method relaxed
+            --amplicons {dataset.name}_{primer_set.name}.fasta \
+            --forward {primer_set.fwd} \
+            --reverse {primer_set.rev} \
+            --percent-identity {percid} \
+            --coverage {coverage}
         """)
 
     def assign_taxonomy(self, dataset: NucleotideDataset, primer_set: PrimerSet):
@@ -149,7 +172,7 @@ class DatabaseBuilder:
             --input {dataset.name}_{primer_set.name}_pga.fasta \
             --output {dataset.name}_{primer_set.name}_pga_taxa.tsv \
             --acc2tax nucl_gb.accession2taxid \
-            --taxid nodes.dmp \
+            --taxon nodes.dmp \
             --name names.dmp \
             --missing {dataset.name}_{primer_set.name}_pga_missing_taxa.tsv
         """)

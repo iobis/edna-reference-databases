@@ -5,13 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Module",
+            "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "module": "ednarefdb",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
-        }
+        },
+        {
+            "name": "Script: dev",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/dev.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
     ]
 }
