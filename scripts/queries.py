@@ -6,12 +6,16 @@ logging.basicConfig(level=logging.INFO)
 
 
 primer_set_coi = PrimerSet(name="coi", fwd="GGWACWGGWTGAACWGTWTAYCCYCC", rev="TAIACYTCIGGRTGICCRAARAAYCA")
-dataset_coi = NucleotideDataset(name="coi_ncbi_1_50000", query='COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR cytochrome c oxidase subunit I[All Fields] OR cytochrome c oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])')
-dataset_ribo = NucleotideDataset(name="ncbi_ribo_1_50000", query='(12S[All Fields] OR 16S[All Fields]) AND ribosomal[All Fields] AND ("1"[SLEN] : "50000"[SLEN])')
+dataset_coi = NucleotideDataset(name="ncbi_coi_50_50000", query='COI[All Fields] OR CO1[All Fields] OR cytochrome oxidase subunit I[All Fields] OR cytochrome oxidase subunit 1[All Fields] OR cytochrome c oxidase subunit I[All Fields] OR cytochrome c oxidase subunit 1[All Fields] OR COX1[All Fields] AND ("50"[SLEN] : "50000"[SLEN])')
+dataset_ribo = NucleotideDataset(name="ncbi_ribosomal_50_50000", query='(12S[All Fields] OR 16S[All Fields]) AND ribosomal[All Fields] AND ("50"[SLEN] : "50000"[SLEN])')
+dataset_12s = NucleotideDataset(name="ncbi_12s_1_50000", query='12S[All Fields] AND ribosomal[All Fields] AND ("1"[SLEN] : "50000"[SLEN])')
+dataset_16s = NucleotideDataset(name="ncbi_16s_1_50000", query='16S[All Fields] AND ribosomal[All Fields] AND ("1"[SLEN] : "50000"[SLEN])')
 
 datasets = [
-    dataset_coi,
-    # dataset_ribo
+    # dataset_coi,
+    # dataset_12s
+    # dataset_16s
+    dataset_ribo
 ]
 
 databases = [
