@@ -6,3 +6,4 @@
 *.accession2taxid
 output*
 __pycache__
+.Rproj.user

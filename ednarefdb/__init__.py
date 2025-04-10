@@ -105,6 +105,7 @@ class DatabaseBuilder:
 
         logging.info(f"Importing fasta for {dataset.name}")
 
+        # TODO: set filenames at module level
         output_path = f"{dataset.name}.crabs.txt" if dataset.crabs_path is None else dataset.crabs_path
         dataset_path = f"{dataset.name}.fasta" if dataset.path is None else dataset.path
 
@@ -145,44 +146,17 @@ class DatabaseBuilder:
             f"{dataset.name}_{primer_set.name}_pga.fasta"
         ])
 
+        dataset_path = f"{dataset.name}.crabs.txt"
+
         self.run_command(f"""
             crabs --pairwise-global-alignment \
-            --input {dataset.name}.fasta \
+            --input {dataset_path} \
             --output {dataset.name}_{primer_set.name}_pga.fasta \
             --amplicons {dataset.name}_{primer_set.name}.fasta \
             --forward {primer_set.fwd} \
             --reverse {primer_set.rev} \
             --percent-identity {percid} \
             --coverage {coverage}
-        """)
-
-    def assign_taxonomy(self, dataset: NucleotideDataset, primer_set: PrimerSet):
-
-        logging.info(f"Assigning taxonomy for {dataset.name}_{primer_set.name}")
-
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga_taxa.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_missing_taxa.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_pacman.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_pacmanformat.tsv"
-        ])
-
-        self.run_command(f"""
-            crabs assign_tax \
-            --input {dataset.name}_{primer_set.name}_pga.fasta \
-            --output {dataset.name}_{primer_set.name}_pga_taxa.tsv \
-            --acc2tax nucl_gb.accession2taxid \
-            --taxon nodes.dmp \
-            --name names.dmp \
-            --missing {dataset.name}_{primer_set.name}_pga_missing_taxa.tsv
-        """)
-
-        self.run_command(f"""
-            awk -F'\t' '{{OFS="\t"; $10=$3";"$4";"$5";"$6";"$7";"$8";"$9; print}}' {dataset.name}_{primer_set.name}_pga_taxa.tsv > {dataset.name}_{primer_set.name}_pga_pacman.tsv
-        """)
-
-        self.run_command(f"""
-            cut -f1,10 {dataset.name}_{primer_set.name}_pga_pacman.tsv > {dataset.name}_{primer_set.name}_pga_taxa_pacmanformat.tsv
         """)
 
     def sequence_cleanup(self, dataset: NucleotideDataset, primer_set: PrimerSet):
