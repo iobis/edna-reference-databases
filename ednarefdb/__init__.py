@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from ednarefdb.lineage2taxtrain import lineage2taxtrain
 from ednarefdb.addfulllineage import addfulllineage
+import glob
 
 
 @dataclass
@@ -74,10 +75,12 @@ class DatabaseBuilder:
 
     def cleanup_files(self, files: list[str]):
         for file in files:
-            try:
-                os.remove(os.path.join(self.working_dir, file))
-            except FileNotFoundError:
-                pass
+                for f in glob.glob(os.path.join(self.working_dir, file)):
+                    logging.info(f"Removing file: {f}")
+                    try:
+                        os.remove(f)
+                    except FileNotFoundError:
+                        pass
 
     def ncbi_download_taxonomy(self):
 
@@ -106,7 +109,7 @@ class DatabaseBuilder:
         logging.info(f"Importing fasta for {dataset.name}")
 
         # TODO: set filenames at module level
-        output_path = f"{dataset.name}.crabs.txt" if dataset.crabs_path is None else dataset.crabs_path
+        output_path = f"{dataset.name}.txt" if dataset.crabs_path is None else dataset.crabs_path
         dataset_path = f"{dataset.name}.fasta" if dataset.path is None else dataset.path
 
         self.run_command(f"""
@@ -125,15 +128,15 @@ class DatabaseBuilder:
         logging.info(f"Performing in silico PCR for {dataset.name}_{primer_set.name}")
 
         self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}.fasta"
+            f"{dataset.name}_{primer_set.name}.txt"
         ])
 
-        dataset_path = f"{dataset.name}.crabs.txt"
+        dataset_path = f"{dataset.name}.txt"
 
         self.run_command(f"""
             crabs --in-silico-pcr \
             --input {dataset_path} \
-            --output {dataset.name}_{primer_set.name}.fasta \
+            --output {dataset.name}_{primer_set.name}.txt \
             --forward {primer_set.fwd} \
             --reverse {primer_set.rev}
         """)
@@ -143,106 +146,134 @@ class DatabaseBuilder:
         logging.info(f"Performing PGA for {dataset.name}_{primer_set.name}")
 
         self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga.fasta"
+            f"{dataset.name}_{primer_set.name}_pga.txt"
         ])
 
-        dataset_path = f"{dataset.name}.crabs.txt"
+        dataset_path = f"{dataset.name}.txt"
 
         self.run_command(f"""
             crabs --pairwise-global-alignment \
             --input {dataset_path} \
-            --output {dataset.name}_{primer_set.name}_pga.fasta \
-            --amplicons {dataset.name}_{primer_set.name}.fasta \
+            --output {dataset.name}_{primer_set.name}_pga.txt \
+            --amplicons {dataset.name}_{primer_set.name}.txt \
             --forward {primer_set.fwd} \
             --reverse {primer_set.rev} \
             --percent-identity {percid} \
             --coverage {coverage}
         """)
 
-    def sequence_cleanup(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+    def dereplicate(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
         logging.info(f"Performing cleanup for {dataset.name}_{primer_set.name}")
 
         self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"
+            f"{dataset.name}_{primer_set.name}_pga_derep.txt",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv",
+            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"
         ])
 
         self.run_command(f"""
-            crabs dereplicate \
-            --input {dataset.name}_{primer_set.name}_pga_taxa.tsv \
-            --output {dataset.name}_{primer_set.name}_pga_taxa_derep.tsv \
-            --method uniq_species
+            crabs --dereplicate \
+            --input {dataset.name}_{primer_set.name}_pga.txt \
+            --output {dataset.name}_{primer_set.name}_pga_derep.txt \
+            --dereplication-method 'unique_species'
+        """)
+
+        # self.run_command(f"""
+        #     crabs seq_cleanup \
+        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep.tsv \
+        #     --maxns 0 \
+        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
+        #     --minlen 100 --maxlen 5000 --nans 6 --enviro yes --species yes
+        # """)
+
+        # self.run_command(f"""
+        #     awk '!/(\t|^)nan(\t|$)/' {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv > temp.tsv && mv temp.tsv {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv
+        # """)
+
+        # self.run_command(f"""
+        #     crabs tax_format \
+        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
+        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta \
+        #     --format rdp
+        # """)
+
+        # self.run_command(f"""
+        #     crabs tax_format \
+        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
+        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta \
+        #     --format sintax
+        # """)
+
+        # self.run_command(f"""
+        #     grep "^>" {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta | \
+        #     sed 's/^>//g' | \
+        #     sed 's/;/\t/' \
+        #     > {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv
+        # """)
+
+        # self.run_command(f"""
+        #     awk 'BEGIN{{OFS=";"}} {{
+        #     split($3, tax, ";");
+        #     for (i = 1; i <= 7; i++) {{
+        #         if (tax[i] == "") {{
+        #         tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
+        #         }}
+        #     }}
+        #     print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
+        #     }}' \
+        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv | \
+        #     sed 's/;/\\t/g '> \
+        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv
+        # """)
+
+        # self.run_command(f"""
+        #     grep -v "g_f_o_c_p_k_" \
+        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv > \
+        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
+        # """)
+
+        # self.run_command(f"""
+        #     wc -l {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
+        # """)
+
+        # with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "r") as file:
+        #     content = file.read()
+        # with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "w") as file:
+        #     file.write("Seq-ID\tSuperkingdom\tPhylum\tClass\tOrder\tFamily\tGenus\tSpecies\n")
+        #     file.write(content)
+
+    def export(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+
+        logging.info(f"Performing export for {dataset.name}_{primer_set.name}")
+
+        self.cleanup_files([
+            f"{dataset.name}_{primer_set.name}_pga_derep_sintax.fasta",
+            f"{dataset.name}_{primer_set.name}_pga_derep_rdp.fasta",
+            f"{dataset.name}_{primer_set.name}_pga_derep_blast*"
+        ])
+
+        self.run_command(f"""
+            crabs --export --export-format 'sintax' \
+            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
+            --output {dataset.name}_{primer_set.name}_pga_derep_sintax.fasta
         """)
 
         self.run_command(f"""
-            crabs seq_cleanup \
-            --input {dataset.name}_{primer_set.name}_pga_taxa_derep.tsv \
-            --maxns 0 \
-            --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-            --minlen 100 --maxlen 5000 --nans 6 --enviro yes --species yes
+            crabs --export --export-format 'rdp' \
+            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
+            --output {dataset.name}_{primer_set.name}_pga_derep_rdp.fasta
         """)
 
         self.run_command(f"""
-            awk '!/(\t|^)nan(\t|$)/' {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv > temp.tsv && mv temp.tsv {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv
+            crabs --export --export-format 'blast-notax' \
+            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
+            --output {dataset.name}_{primer_set.name}_pga_derep_blast
         """)
-
-        self.run_command(f"""
-            crabs tax_format \
-            --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-            --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta \
-            --format rdp
-        """)
-
-        self.run_command(f"""
-            crabs tax_format \
-            --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-            --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta \
-            --format sintax
-        """)
-
-        self.run_command(f"""
-            grep "^>" {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta | \
-            sed 's/^>//g' | \
-            sed 's/;/\t/' \
-            > {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv
-        """)
-
-        self.run_command(f"""
-            awk 'BEGIN{{OFS=";"}} {{
-            split($3, tax, ";");
-            for (i = 1; i <= 7; i++) {{
-                if (tax[i] == "") {{
-                tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
-                }}
-            }}
-            print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-            }}' \
-            {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv | \
-            sed 's/;/\\t/g '> \
-            {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv
-        """)
-
-        self.run_command(f"""
-            grep -v "g_f_o_c_p_k_" \
-            {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv > \
-            {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
-        """)
-
-        self.run_command(f"""
-            wc -l {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
-        """)
-
-        with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "r") as file:
-            content = file.read()
-        with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "w") as file:
-            file.write("Seq-ID\tSuperkingdom\tPhylum\tClass\tOrder\tFamily\tGenus\tSpecies\n")
-            file.write(content)
 
     def train(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
