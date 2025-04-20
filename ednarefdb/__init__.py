@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from ednarefdb.lineage2taxtrain import lineage2taxtrain
 from ednarefdb.addfulllineage import addfulllineage
 import glob
+from Bio import SeqIO
+from ednarefdb.taxonomy import tsv_to_filled_taxonomy_tsv, fix_homonyms, generate_fasta_and_taxonomy
 
 
 @dataclass
@@ -57,9 +59,20 @@ class DatabaseBuilder:
         logging.info(command)
         subprocess.run(command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
+    # def run_command_conda(self, command):
+    #     logging.info(command)
+    #     subprocess.run(f"source {self.shell_config} && conda init && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
+
     def run_command_conda(self, command):
-        logging.info(command)
-        subprocess.run(f"source {self.shell_config} && source activate base && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
+        # full_command = f"conda run -n crabs {command}"
+        full_command = f"source {self.shell_config} && source $(conda info --base)/etc/profile.d/conda.sh && conda activate crabs && {command}"
+        logging.info(full_command)
+        subprocess.run(
+            full_command,
+            cwd=self.working_dir, 
+            shell=True, 
+            executable=self.shell_executable
+        )
 
     def run_command_docker(self, command):
         logging.info(command)
@@ -109,8 +122,8 @@ class DatabaseBuilder:
         logging.info(f"Importing fasta for {dataset.name}")
 
         # TODO: set filenames at module level
-        output_path = f"{dataset.name}.txt" if dataset.crabs_path is None else dataset.crabs_path
         dataset_path = f"{dataset.name}.fasta" if dataset.path is None else dataset.path
+        output_path = f"{dataset.name}.txt" if dataset.crabs_path is None else dataset.crabs_path
 
         self.run_command(f"""
             crabs --import \
@@ -120,7 +133,7 @@ class DatabaseBuilder:
             --nodes nodes.dmp \
             --acc2tax nucl_gb.accession2taxid \
             --output {output_path} \
-            --ranks 'superkingdom;phylum;class;order;family;genus;species'
+            --ranks 'domain;phylum;class;order;family;genus;species'
         """)
 
     def pcr(self, dataset: NucleotideDataset, primer_set: PrimerSet):
@@ -183,70 +196,6 @@ class DatabaseBuilder:
             --dereplication-method 'unique_species'
         """)
 
-        # self.run_command(f"""
-        #     crabs seq_cleanup \
-        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep.tsv \
-        #     --maxns 0 \
-        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-        #     --minlen 100 --maxlen 5000 --nans 6 --enviro yes --species yes
-        # """)
-
-        # self.run_command(f"""
-        #     awk '!/(\t|^)nan(\t|$)/' {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv > temp.tsv && mv temp.tsv {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv
-        # """)
-
-        # self.run_command(f"""
-        #     crabs tax_format \
-        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta \
-        #     --format rdp
-        # """)
-
-        # self.run_command(f"""
-        #     crabs tax_format \
-        #     --input {dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv \
-        #     --output {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta \
-        #     --format sintax
-        # """)
-
-        # self.run_command(f"""
-        #     grep "^>" {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta | \
-        #     sed 's/^>//g' | \
-        #     sed 's/;/\t/' \
-        #     > {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv
-        # """)
-
-        # self.run_command(f"""
-        #     awk 'BEGIN{{OFS=";"}} {{
-        #     split($3, tax, ";");
-        #     for (i = 1; i <= 7; i++) {{
-        #         if (tax[i] == "") {{
-        #         tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
-        #         }}
-        #     }}
-        #     print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-        #     }}' \
-        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv | \
-        #     sed 's/;/\\t/g '> \
-        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv
-        # """)
-
-        # self.run_command(f"""
-        #     grep -v "g_f_o_c_p_k_" \
-        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv > \
-        #     {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
-        # """)
-
-        # self.run_command(f"""
-        #     wc -l {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv
-        # """)
-
-        # with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "r") as file:
-        #     content = file.read()
-        # with open(os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"), "w") as file:
-        #     file.write("Seq-ID\tSuperkingdom\tPhylum\tClass\tOrder\tFamily\tGenus\tSpecies\n")
-        #     file.write(content)
-
     def export(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
         logging.info(f"Performing export for {dataset.name}_{primer_set.name}")
@@ -263,68 +212,48 @@ class DatabaseBuilder:
             --output {dataset.name}_{primer_set.name}_pga_derep_sintax.fasta
         """)
 
-        self.run_command(f"""
-            crabs --export --export-format 'rdp' \
-            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
-            --output {dataset.name}_{primer_set.name}_pga_derep_rdp.fasta
-        """)
+    def prepare_train(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
-        self.run_command(f"""
-            crabs --export --export-format 'blast-notax' \
-            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
-            --output {dataset.name}_{primer_set.name}_pga_derep_blast
-        """)
+        logging.info(f"Preparing training files for {dataset.name}_{primer_set.name}")
+
+        self.cleanup_files([
+            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
+            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta",
+            # "Seq_IDs.tsv",
+            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta"
+        ])
+
+        input_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep.txt")
+        filled_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled.txt")
+        fixed_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed.txt")
+        rdp_tax_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.txt")
+        rdp_fasta_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.fasta")
+        rdp_taxonomy_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp_taxonomy.txt")
+
+        tsv_to_filled_taxonomy_tsv(input_file, filled_file)
+        fix_homonyms(filled_file, fixed_file)
+        generate_fasta_and_taxonomy(fixed_file, rdp_fasta_file, rdp_tax_file)
+        lineage2taxtrain(rdp_tax_file, rdp_taxonomy_file)
 
     def train(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
         logging.info(f"Training classifier for {dataset.name}_{primer_set.name}")
 
-        self.cleanup_files([
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta",
-            "Seq_IDs.tsv",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta"
-        ])
-
-        lineage2taxtrain(
-            os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"),
-            os.path.join(self.working_dir, f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv")
-        )
+        rdp_fasta_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.fasta")
+        rdp_taxonomy_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp_taxonomy.txt")
 
         self.run_command_conda(f"""
-            cut -f1 {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta > {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta
+            classifier -Xmx100g train -o training_files_{primer_set.name} \
+            -s {rdp_fasta_file} \
+            -t {rdp_taxonomy_file}
         """)
 
-        self.run_command_conda(f"""
-            cut -f1 {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv > Seq_IDs.tsv
-        """)
-
-        self.run_command_conda(f"""
-            seqtk subseq {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta Seq_IDs.tsv > {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta
-        """)
-
-        self.run_command_conda(f"""
-            grep -c "^>" {dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta
-        """)
-
-        addfulllineage(
-            os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"),
-            os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta"),
-            os.path.join(self.working_dir, f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta")
-        )
-
-        self.run_command_conda(f"""
-            classifier -Xmx16g train -o training_files_{primer_set.name} \
-            -s ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta \
-            -t ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv
-        """)
-
-        with open(os.path.join(self.working_dir, f"training_files_{primer_set.name}", "rRNAClassifier.properties"), "w") as xml_file:
-            xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
-            xml_file.write("probabilityList=genus_wordConditionalProbList.txt" + "\n")
-            xml_file.write("probabilityIndex=wordConditionalProbIndexArr.txt" + "\n")
-            xml_file.write("wordPrior=logWordPrior.txt" + "\n")
-            xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
+        # with open(os.path.join(self.working_dir, f"training_files_{primer_set.name}", "rRNAClassifier.properties"), "w") as xml_file:
+        #     xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
+        #     xml_file.write("probabilityList=genus_wordConditionalProbList.txt" + "\n")
+        #     xml_file.write("probabilityIndex=wordConditionalProbIndexArr.txt" + "\n")
+        #     xml_file.write("wordPrior=logWordPrior.txt" + "\n")
+        #     xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
 
     def cleanup(self, dataset: NucleotideDataset, primer_set: PrimerSet):
 
