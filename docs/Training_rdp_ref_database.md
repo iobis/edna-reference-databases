@@ -231,12 +231,12 @@ Next the taxonomy was assigned using the downloaded ncbi taxonomy dump.
 
 No other cleanup was done for the reference files, but is available in the crabs workflow. 
 
-The PacMAN pipeline requires a simple text file with the sequence-id tab separated from the taxonomic information, which are separated by ";".
+The PacMAN pipeline requires a simple text file with the sequence-id tab separated from the taxonomic information, which are separated by ",".
 
 The taxonomy file was formatted for the PacMAN pipeline with the following commands:
 
 ```
-awk -F'\t' '{OFS="\t"; $10=$3";"$4";"$5";"$6";"$7";"$8";"$9; print}' 12S_ncbi_mifish_pga_taxa.tsv > 12S_ncbi_mifish_pga_pacman.tsv
+awk -F'\t' '{OFS="\t", $10=$3","$4","$5","$6","$7","$8","$9, print}' 12S_ncbi_mifish_pga_taxa.tsv > 12S_ncbi_mifish_pga_pacman.tsv
 
 cut -f1,10 12S_ncbi_mifish_pga_pacman.tsv > 12S_ncbi_mifish_pga_taxa_pacmanformat.tsv
 
@@ -303,22 +303,22 @@ The first step is to build the taxonomy file so that it has the correct format. 
 So from the file collected previously we separate out the required fields. We take the fasta header, remove the > separate the taxonomy to columns, and remove the "root" field of the taxonomy. 
 
 ```
-grep "^>" COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.fasta | sed 's/^>//g' | sed 's/;/\t/'  > COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.tsv
+grep "^>" COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.fasta | sed 's/^>//g' | sed 's/,/\t/'  > COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.tsv
 
 ```
 
 Next we need to replace any empty fields with information. In this case, if there is for example and empty genus, I will add placeholder with g_family, where the 'family' is the name of the family that the genus belongs in. 
 
 ```
-awk 'BEGIN{OFS=";"} {
-  split($3, tax, ";");
-  for (i = 1; i <= 7; i++) {
+awk 'BEGIN{OFS=","} {
+  split($3, tax, ","),
+  for (i = 1, i <= 7, i++) {
     if (tax[i] == "") {
-      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
+      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1],
     }
   }
-  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-}' COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.tsv | sed 's/;/\t/g '> COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp_filled.tsv
+  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7],
+}' COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp.tsv | sed 's/,/\t/g '> COI_ncbi_1_50000_pcr_pga_taxon_derep_clean_rdp_filled.tsv
 
 ```
 Despite the fact CRABS cleanup was supposed to remove the taxonomies that were fully unknown, there are still many unknown entries in this file. These will be removed
@@ -870,17 +870,17 @@ crabs tax_format --input 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean.t
 Mifish
 
 ```
-grep "^>" 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.fasta | sed 's/^>//g' | sed 's/;/\t/'  > 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.tsv
+grep "^>" 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.fasta | sed 's/^>//g' | sed 's/,/\t/'  > 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.tsv
 
-awk 'BEGIN{OFS=";"} {
-  split($3, tax, ";");
-  for (i = 1; i <= 7; i++) {
+awk 'BEGIN{OFS=","} {
+  split($3, tax, ","),
+  for (i = 1, i <= 7, i++) {
     if (tax[i] == "") {
-      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
+      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1],
     }
   }
-  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-}' 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.tsv | sed 's/;/\t/g '> 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp_filled.tsv
+  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7],
+}' 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp.tsv | sed 's/,/\t/g '> 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp_filled.tsv
 
 grep -v "g_f_o_c_p_k_" 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp_filled.tsv > 12S_mito_ncbi_1_50000_mifish_pcr_pga_taxa_derep_clean_rdp_filled_nona.tsv
 
@@ -892,17 +892,17 @@ sed -i $'1 i\\\nSeq-ID\tSuperkingdom\tPhylum\tClass\tOrder\tFamily\tGenus\tSpeci
 Teleo
 
 ```
-grep "^>" 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.fasta | sed 's/^>//g' | sed 's/;/\t/'  > 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.tsv
+grep "^>" 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.fasta | sed 's/^>//g' | sed 's/,/\t/'  > 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.tsv
 
-awk 'BEGIN{OFS=";"} {
-  split($3, tax, ";");
-  for (i = 1; i <= 7; i++) {
+awk 'BEGIN{OFS=","} {
+  split($3, tax, ","),
+  for (i = 1, i <= 7, i++) {
     if (tax[i] == "") {
-      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
+      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1],
     }
   }
-  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-}' 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.tsv | sed 's/;/\t/g '> 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp_filled.tsv
+  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7],
+}' 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp.tsv | sed 's/,/\t/g '> 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp_filled.tsv
 
 grep -v "g_f_o_c_p_k_" 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp_filled.tsv > 12S_mito_ncbi_1_50000_teleo_pcr_pga_taxa_clean_rdp_filled_nona.tsv
 
@@ -914,17 +914,17 @@ sed -i $'1 i\\\nSeq-ID\tSuperkingdom\tPhylum\tClass\tOrder\tFamily\tGenus\tSpeci
 Mimammal
 
 ```
-grep "^>" 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.fasta | sed 's/^>//g' | sed 's/;/\t/'  > 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.tsv
+grep "^>" 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.fasta | sed 's/^>//g' | sed 's/,/\t/'  > 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.tsv
 
-awk 'BEGIN{OFS=";"} {
-  split($3, tax, ";");
-  for (i = 1; i <= 7; i++) {
+awk 'BEGIN{OFS=","} {
+  split($3, tax, ","),
+  for (i = 1, i <= 7, i++) {
     if (tax[i] == "") {
-      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1];
+      tax[i] = substr("kpcofgs", i, 1) "_" tax[i - 1],
     }
   }
-  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7];
-}' 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.tsv | sed 's/;/\t/g '> 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp_filled.tsv
+  print $1, tax[1], tax[2], tax[3], tax[4], tax[5], tax[6], tax[7],
+}' 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp.tsv | sed 's/,/\t/g '> 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp_filled.tsv
 
 grep -v "g_f_o_c_p_k_" 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp_filled.tsv > 12S_mammal_ncbi_1_50000_pcr_pga_taxa_derep_taxa_clean_rdp_filled_nona.tsv
 

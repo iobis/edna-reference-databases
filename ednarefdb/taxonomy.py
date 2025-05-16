@@ -33,7 +33,7 @@ def fix_homonyms(input_path: str, output_path: str):
 
 def cleanup_name(name: str):
     name = name.strip()
-    name = name.replace(" ", "_")
+    name = name.replace(" ", "_").replace(",", "_")
     if "sp." in name:
         name = "NA"
     return name

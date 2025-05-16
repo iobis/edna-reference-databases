@@ -13,7 +13,7 @@ primer_16s_r="GATCCAACATCGAGGTCGTAA"
 
 threads=6
 
-if ! [ -f nucl_gb.accession2taxid ]; then
+if ! [ -f nucl_gb.accession2taxid ], then
 crabs db_download --source taxonomy
 fi
 

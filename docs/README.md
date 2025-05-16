@@ -212,12 +212,12 @@ Next the taxonomy was assigned using the downloaded ncbi taxonomy dump.
 
 No other cleanup was done for the reference files, but is available in the crabs workflow. 
 
-The PacMAN pipeline requires a simple text file with the sequence-id tab separated from the taxonomic information, which are separated by ";".
+The PacMAN pipeline requires a simple text file with the sequence-id tab separated from the taxonomic information, which are separated by ",".
 
 The taxonomy file was formatted for the PacMAN pipeline with the following commands:
 
 ```
-awk -F'\t' '{OFS="\t"; $10=$3";"$4";"$5";"$6";"$7";"$8";"$9; print}' 12S_ncbi_mifish_pga_taxa.tsv > 12S_ncbi_mifish_pga_pacman.tsv
+awk -F'\t' '{OFS="\t", $10=$3","$4","$5","$6","$7","$8","$9, print}' 12S_ncbi_mifish_pga_taxa.tsv > 12S_ncbi_mifish_pga_pacman.tsv
 
 cut -f1,10 12S_ncbi_mifish_pga_pacman.tsv > 12S_ncbi_mifish_pga_taxa_pacmanformat.tsv
 ```

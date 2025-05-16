@@ -7,6 +7,7 @@ from ednarefdb.addfulllineage import addfulllineage
 import glob
 from Bio import SeqIO
 from ednarefdb.taxonomy import tsv_to_filled_taxonomy_tsv, fix_homonyms, generate_fasta_and_taxonomy
+import shutil
 
 
 @dataclass
@@ -14,14 +15,27 @@ class PrimerSet:
     name: str
     fwd: str
     rev: str
+    min_length: int = None
+    max_length: int = None
+    max_n: int = 1
+    mismatch: int = 4
+    pga_percid: float = 0.7
+
+
+@dataclass
+class NucleotideFile:
+    path: str
+    type: str
 
 
 @dataclass
 class NucleotideDataset:
     name: str
     query: str = None
-    path: str = None
-    crabs_path: str = None
+    type: str = None
+    # path: str = None
+    # crabs_path: str = None
+    files: list[NucleotideFile] = None
 
 
 @dataclass
@@ -32,9 +46,11 @@ class ReferenceDatabase:
 
 class DatabaseBuilder:
 
-    def __init__(self, working_dir: str, environment: str = "conda"):
+    def __init__(self, database: ReferenceDatabase, working_dir: str, environment: str = "conda", dry_run: bool = False):
+        self.database = database
         self.working_dir = working_dir
         self.environment = environment
+        self.dry_run = dry_run
         self.set_shell_config()
 
         if not os.path.exists(self.working_dir):
@@ -56,7 +72,6 @@ class DatabaseBuilder:
             raise RuntimeError("Could not determine shell")
 
     def run_command_base(self, command):
-        logging.info(command)
         subprocess.run(command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
     # def run_command_conda(self, command):
@@ -64,7 +79,6 @@ class DatabaseBuilder:
     #     subprocess.run(f"source {self.shell_config} && conda init && conda activate crabs && {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
     def run_command_conda(self, command):
-        # full_command = f"conda run -n crabs {command}"
         full_command = f"source {self.shell_config} && source $(conda info --base)/etc/profile.d/conda.sh && conda activate crabs && {command}"
         logging.info(full_command)
         subprocess.run(
@@ -75,25 +89,33 @@ class DatabaseBuilder:
         )
 
     def run_command_docker(self, command):
-        logging.info(command)
-        subprocess.run(f"docker run --rm -it -v $(pwd):/data --workdir='/data' quay.io/swordfish/crabs:0.1.4 {command}", cwd=self.working_dir, shell=True, executable=self.shell_executable)
+        full_command = f"docker run --rm -it -v $(pwd):/data --workdir='/data' quay.io/swordfish/crabs:0.1.4 {command}"
+        logging.info(full_command)
+        subprocess.run(full_command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
 
-    def run_command(self, command):
-        if self.environment == "conda":
-            self.run_command_conda(command)
-        elif self.environment == "docker":
-            self.run_command_docker(command)
-        else:
-            self.run_command_base(command)
+    def run_command(self, command, force_conda=False):
+        logging.info(command)
+        if not self.dry_run:
+            if self.environment == "conda" or force_conda:
+                self.run_command_conda(command)
+            elif self.environment == "docker":
+                self.run_command_docker(command)
+            else:
+                self.run_command_base(command)
 
     def cleanup_files(self, files: list[str]):
         for file in files:
-                for f in glob.glob(os.path.join(self.working_dir, file)):
-                    logging.info(f"Removing file: {f}")
-                    try:
+            for f in glob.glob(os.path.join(self.working_dir, file), recursive=True):
+                logging.info(f"Removing: {f}")
+                try:
+                    if os.path.isfile(f) or os.path.islink(f):
                         os.remove(f)
-                    except FileNotFoundError:
-                        pass
+                    elif os.path.isdir(f):
+                        shutil.rmtree(f)
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    logging.warning(f"Failed to remove {f}: {e}")
 
     def ncbi_download_taxonomy(self):
 
@@ -104,149 +126,208 @@ class DatabaseBuilder:
 
         logging.info(f"Downloading NCBI nucleotide with query {dataset.query} to {dataset.name}")
 
+        output_path = f"{dataset.name}.fasta"
         self.cleanup_files([
-            f"{dataset.name}.fasta"
+            output_path
         ])
 
         self.run_command(f"""
             crabs --download-ncbi \
             --database nucleotide \
             --query '{dataset.query}' \
-            --output {dataset.name}.fasta \
+            --output {output_path} \
             --email helpdesk@obis.org \
             --batchsize 5000
         """)
 
-    def import_nucleotide(self, dataset: NucleotideDataset):
+    def import_nucleotide(self):
 
-        logging.info(f"Importing fasta for {dataset.name}")
+        logging.info(f"Importing fasta for {self.database.dataset.name}")
 
-        # TODO: set filenames at module level
-        dataset_path = f"{dataset.name}.fasta" if dataset.path is None else dataset.path
-        output_path = f"{dataset.name}.txt" if dataset.crabs_path is None else dataset.crabs_path
+        output_path = f"{self.database.dataset.name}.txt"
+        if not self.dry_run: self.cleanup_files([ output_path ])
 
-        self.run_command(f"""
-            crabs --import \
-            --import-format ncbi \
-            --input {dataset_path} \
-            --names names.dmp \
-            --nodes nodes.dmp \
-            --acc2tax nucl_gb.accession2taxid \
-            --output {output_path} \
-            --ranks 'domain;phylum;class;order;family;genus;species'
-        """)
+        if self.database.dataset.files is not None:
+            temp_files = []
 
-    def pcr(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+            for i, file in enumerate(self.database.dataset.files):
+                temp_output_path = f"{self.database.dataset.name}_{i}.txt"
+                temp_files.append(temp_output_path)
+                self.run_command(f"""
+                    crabs --import \
+                    --import-format {file.type} \
+                    --input {file.path} \
+                    --names names.dmp \
+                    --nodes nodes.dmp \
+                    --acc2tax nucl_gb.accession2taxid \
+                    --output {temp_output_path} \
+                    --ranks 'domain;phylum;class;order;family;genus;species'
+                """)
 
-        logging.info(f"Performing in silico PCR for {dataset.name}_{primer_set.name}")
+            if len(temp_files) > 1:
+                temp_files_concat = ";".join(temp_files)
+                self.run_command(f"""
+                    crabs --merge \
+                    --input '{temp_files_concat}' \
+                    --uniq \
+                    --output {output_path}
+                """)
+            else:
+                if not self.dry_run:
+                    os.rename(os.path.join(self.working_dir, temp_files[0]), os.path.join(self.working_dir, output_path))
 
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}.txt"
-        ])
+        else:
+            input_path = f"{self.database.dataset.name}.fasta"
+            self.run_command(f"""
+                crabs --import \
+                --input {input_path} \
+                --import-format {self.database.dataset.type} \
+                --names names.dmp \
+                --nodes nodes.dmp \
+                --acc2tax nucl_gb.accession2taxid \
+                --output {output_path} \
+                --ranks 'domain,phylum,class,order,family,genus,species'
+            """)
 
-        dataset_path = f"{dataset.name}.txt"
+    def pcr(self):
+
+        logging.info(f"Performing in silico PCR for {self.database.dataset.name}_{self.database.primer_set.name}")
+
+        dataset_path = f"{self.database.dataset.name}.txt"
+        prefilter_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_prefilter.txt"
+        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"
+        if not self.dry_run:
+            self.cleanup_files([
+                prefilter_path,
+                output_path
+            ])
 
         self.run_command(f"""
             crabs --in-silico-pcr \
             --input {dataset_path} \
-            --output {dataset.name}_{primer_set.name}.txt \
-            --forward {primer_set.fwd} \
-            --reverse {primer_set.rev}
+            --threads 4 \
+            --mismatch {self.database.primer_set.mismatch} \
+            --output {prefilter_path} \
+            --forward {self.database.primer_set.fwd} \
+            --reverse {self.database.primer_set.rev}
         """)
 
-    def pga(self, dataset: NucleotideDataset, primer_set: PrimerSet, percid: float = 0.8, coverage: float = 0.8):
+        self.run_command(f"""
+            crabs --filter \
+            --input {prefilter_path} \
+            --output {output_path} \
+            --minimum-length {self.database.primer_set.min_length} \
+            --maximum-length {self.database.primer_set.max_length} \
+            --maximum-n {self.database.primer_set.max_n}
+        """)
 
-        logging.info(f"Performing PGA for {dataset.name}_{primer_set.name}")
 
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga.txt"
-        ])
+    def pga(self):
 
-        dataset_path = f"{dataset.name}.txt"
+        logging.info(f"Performing PGA for {self.database.dataset.name}_{self.database.primer_set.name}")
+
+        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"
+        if not self.dry_run: self.cleanup_files([ output_path ])
+
+        dataset_path = f"{self.database.dataset.name}.txt"
+        amplicon_path = f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"
 
         self.run_command(f"""
             crabs --pairwise-global-alignment \
             --input {dataset_path} \
-            --output {dataset.name}_{primer_set.name}_pga.txt \
-            --amplicons {dataset.name}_{primer_set.name}.txt \
-            --forward {primer_set.fwd} \
-            --reverse {primer_set.rev} \
-            --percent-identity {percid} \
-            --coverage {coverage}
+            --output {output_path} \
+            --amplicons {amplicon_path} \
+            --forward {self.database.primer_set.fwd} \
+            --reverse {self.database.primer_set.rev} \
+            --percent-identity {self.database.primer_set.pga_percid} \
+            --coverage 1
         """)
 
-    def dereplicate(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+    def dereplicate(self):
 
-        logging.info(f"Performing cleanup for {dataset.name}_{primer_set.name}")
+        logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga_derep.txt",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_sintax.fasta",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv",
-            # f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv"
-        ])
+        input_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"
+        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"
+        if not self.dry_run: self.cleanup_files([ output_path ])
 
         self.run_command(f"""
             crabs --dereplicate \
-            --input {dataset.name}_{primer_set.name}_pga.txt \
-            --output {dataset.name}_{primer_set.name}_pga_derep.txt \
+            --input {input_path} \
+            --output {output_path} \
             --dereplication-method 'unique_species'
         """)
 
-    def export(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+    def filter(self):
 
-        logging.info(f"Performing export for {dataset.name}_{primer_set.name}")
+        logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}_pga_derep_sintax.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_derep_rdp.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_derep_blast*"
-        ])
+        input_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"
+        output_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"
+        if not self.dry_run: self.cleanup_files([ output_path ])
+
+        self.run_command(f"""
+            crabs --filter \
+            --input {input_path} \
+            --output {output_path} \
+            --minimum-length {self.database.primer_set.min_length} \
+            --maximum-length {self.database.primer_set.max_length} \
+            --maximum-n {self.database.primer_set.max_n}
+        """)
+
+    def export(self):
+
+        logging.info(f"Performing export for {self.database.dataset.name}_{self.database.primer_set.name}")
+
+        input_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"
+        output_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_sintax.fasta"
+        if not self.dry_run: self.cleanup_files([ output_path ])
 
         self.run_command(f"""
             crabs --export --export-format 'sintax' \
-            --input {dataset.name}_{primer_set.name}_pga_derep.txt \
-            --output {dataset.name}_{primer_set.name}_pga_derep_sintax.fasta
+            --input {input_path} \
+            --output {output_path}
         """)
 
-    def prepare_train(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+    def prepare_train(self):
 
-        logging.info(f"Preparing training files for {dataset.name}_{primer_set.name}")
+        logging.info(f"Preparing training files for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        self.cleanup_files([
-            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta",
-            # "Seq_IDs.tsv",
-            # f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta"
-        ])
+        input_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt")
+        filled_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled.txt")
+        fixed_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed.txt")
+        rdp_tax_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.txt")
+        rdp_fasta_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta")
+        rdp_taxonomy_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt")
 
-        input_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep.txt")
-        filled_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled.txt")
-        fixed_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed.txt")
-        rdp_tax_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.txt")
-        rdp_fasta_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.fasta")
-        rdp_taxonomy_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp_taxonomy.txt")
+        if not self.dry_run:
+            self.cleanup_files([
+                filled_file,
+                fixed_file,
+                rdp_tax_file,
+                rdp_fasta_file,
+                rdp_taxonomy_file
+            ])
 
-        tsv_to_filled_taxonomy_tsv(input_file, filled_file)
-        fix_homonyms(filled_file, fixed_file)
-        generate_fasta_and_taxonomy(fixed_file, rdp_fasta_file, rdp_tax_file)
-        lineage2taxtrain(rdp_tax_file, rdp_taxonomy_file)
+            tsv_to_filled_taxonomy_tsv(input_file, filled_file)
+            fix_homonyms(filled_file, fixed_file)
+            generate_fasta_and_taxonomy(fixed_file, rdp_fasta_file, rdp_tax_file)
+            lineage2taxtrain(rdp_tax_file, rdp_taxonomy_file)
 
-    def train(self, dataset: NucleotideDataset, primer_set: PrimerSet):
+    def train(self):
 
-        logging.info(f"Training classifier for {dataset.name}_{primer_set.name}")
+        logging.info(f"Training classifier for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        rdp_fasta_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp.fasta")
-        rdp_taxonomy_file = os.path.join(self.working_dir, f"{dataset.name}_{primer_set.name}_pga_derep_filled_fixed_rdp_taxonomy.txt")
+        rdp_fasta_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta")
+        rdp_taxonomy_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt")
+        output_path = f"training_files_{self.database.primer_set.name}"
+        if not self.dry_run: self.cleanup_files([ output_path ])
 
-        self.run_command_conda(f"""
-            classifier -Xmx100g train -o training_files_{primer_set.name} \
+        self.run_command(f"""
+            classifier -Xmx100g train -o {output_path} \
             -s {rdp_fasta_file} \
             -t {rdp_taxonomy_file}
-        """)
+        """, force_conda=True)
 
         # with open(os.path.join(self.working_dir, f"training_files_{primer_set.name}", "rRNAClassifier.properties"), "w") as xml_file:
         #     xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
@@ -255,26 +336,12 @@ class DatabaseBuilder:
         #     xml_file.write("wordPrior=logWordPrior.txt" + "\n")
         #     xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
 
-    def cleanup(self, dataset: NucleotideDataset, primer_set: PrimerSet):
-
-        self.cleanup_files([
-            f"{dataset.name}_{primer_set.name}.fasta",
-            f"{dataset.name}_{primer_set.name}_pga.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_missing_taxa.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_pacman.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_pacmanformat.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled.tsv",
-            f"{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_filled_nona.tsv",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.fasta",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp.tsv",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names.fasta",
-            "Seq_IDs.tsv",
-            f"ready4train_{dataset.name}_{primer_set.name}_pga_taxa_derep_clean_rdp_names2.fasta"
-        ])
+    def build(self):
+        self.import_nucleotide()
+        self.pcr()
+        self.pga()
+        self.dereplicate()
+        self.filter()
+        self.export()
+        self.prepare_train()
+        self.train()

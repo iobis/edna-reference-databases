@@ -15,7 +15,7 @@ def addfulllineage(input_path: str, fasta_path: str, output_path: str):
                 if not node == "-":
                     lineage.append(node)
             ID = cols[0]
-            lineage = ";".join(lineage)
+            lineage = ",".join(lineage)
             hash[ID] = lineage
         f2 = open(fasta_path, "r").readlines()
         for line in f2:
