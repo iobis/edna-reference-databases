@@ -51,10 +51,28 @@ class DatabaseBuilder:
         self.working_dir = working_dir
         self.environment = environment
         self.dry_run = dry_run
+
         self.set_shell_config()
 
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir)
+
+    def set_file_paths(self):
+        self.files = {
+            "dataset_crabs_file": os.path.join(self.working_dir, f"{self.database.dataset.name}.txt"),
+            "pcr_prefilter_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_prefilter.txt"),
+            "pcr_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"),
+            "pga_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"),
+            "dereplicate_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"),
+            "filtered_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"),
+            "sintax_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_sintax.fasta"),
+            "filled_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled.txt"),
+            "fixed_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed.txt"),
+            "rdp_tax_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.txt"),
+            "rdp_fasta_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta"),
+            "rdp_taxonomy_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt"),
+            "training_files": os.path.join(self.working_dir, f"training_files_{self.database.primer_set.name}")
+        }
 
     def set_shell_config(self):
         shell = os.environ.get("SHELL")
@@ -144,8 +162,7 @@ class DatabaseBuilder:
 
         logging.info(f"Importing fasta for {self.database.dataset.name}")
 
-        output_path = f"{self.database.dataset.name}.txt"
-        if not self.dry_run: self.cleanup_files([ output_path ])
+        if not self.dry_run: self.cleanup_files([ self.files["dataset_crabs_file"] ])
 
         if self.database.dataset.files is not None:
             temp_files = []
@@ -170,11 +187,11 @@ class DatabaseBuilder:
                     crabs --merge \
                     --input '{temp_files_concat}' \
                     --uniq \
-                    --output {output_path}
+                    --output {self.files["dataset_crabs_file"]}
                 """)
             else:
                 if not self.dry_run:
-                    os.rename(os.path.join(self.working_dir, temp_files[0]), os.path.join(self.working_dir, output_path))
+                    os.rename(os.path.join(self.working_dir, temp_files[0]), os.path.join(self.working_dir, self.files["dataset_crabs_file"]))
 
         else:
             input_path = f"{self.database.dataset.name}.fasta"
@@ -185,7 +202,7 @@ class DatabaseBuilder:
                 --names names.dmp \
                 --nodes nodes.dmp \
                 --acc2tax nucl_gb.accession2taxid \
-                --output {output_path} \
+                --output {self.files["dataset_crabs_file"]} \
                 --ranks 'domain,phylum,class,order,family,genus,species'
             """)
 
@@ -193,29 +210,26 @@ class DatabaseBuilder:
 
         logging.info(f"Performing in silico PCR for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        dataset_path = f"{self.database.dataset.name}.txt"
-        prefilter_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_prefilter.txt"
-        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"
         if not self.dry_run:
             self.cleanup_files([
-                prefilter_path,
-                output_path
+                self.files["pcr_prefilter_file"],
+                self.files["pcr_file"]
             ])
 
         self.run_command(f"""
             crabs --in-silico-pcr \
-            --input {dataset_path} \
+            --input {self.files['dataset_crabs_file']} \
             --threads 4 \
             --mismatch {self.database.primer_set.mismatch} \
-            --output {prefilter_path} \
+            --output {self.files['pcr_prefilter_file']} \
             --forward {self.database.primer_set.fwd} \
             --reverse {self.database.primer_set.rev}
         """)
 
         self.run_command(f"""
             crabs --filter \
-            --input {prefilter_path} \
-            --output {output_path} \
+            --input {self.files['pcr_prefilter_file']} \
+            --output {self.files['pcr_file']} \
             --minimum-length {self.database.primer_set.min_length} \
             --maximum-length {self.database.primer_set.max_length} \
             --maximum-n {self.database.primer_set.max_n}
@@ -226,17 +240,13 @@ class DatabaseBuilder:
 
         logging.info(f"Performing PGA for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"
-        if not self.dry_run: self.cleanup_files([ output_path ])
-
-        dataset_path = f"{self.database.dataset.name}.txt"
-        amplicon_path = f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"
+        if not self.dry_run: self.cleanup_files([ self.files['pga_file'] ])
 
         self.run_command(f"""
             crabs --pairwise-global-alignment \
-            --input {dataset_path} \
-            --output {output_path} \
-            --amplicons {amplicon_path} \
+            --input {self.files['dataset_crabs_file']} \
+            --output {self.files['pga_file']} \
+            --amplicons {self.files['pcr_file']} \
             --forward {self.database.primer_set.fwd} \
             --reverse {self.database.primer_set.rev} \
             --percent-identity {self.database.primer_set.pga_percid} \
@@ -247,14 +257,12 @@ class DatabaseBuilder:
 
         logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        input_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"
-        output_path = f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"
-        if not self.dry_run: self.cleanup_files([ output_path ])
+        if not self.dry_run: self.cleanup_files([ self.files['dereplicate_file'] ])
 
         self.run_command(f"""
             crabs --dereplicate \
-            --input {input_path} \
-            --output {output_path} \
+            --input {self.files['pga_file']} \
+            --output {self.files['dereplicate_file']} \
             --dereplication-method 'unique_species'
         """)
 
@@ -262,14 +270,12 @@ class DatabaseBuilder:
 
         logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        input_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"
-        output_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"
-        if not self.dry_run: self.cleanup_files([ output_path ])
+        if not self.dry_run: self.cleanup_files([ self.files["filtered_file"] ])
 
         self.run_command(f"""
             crabs --filter \
-            --input {input_path} \
-            --output {output_path} \
+            --input {self.files['dereplicate_file']} \
+            --output {self.files['filtered_file']} \
             --minimum-length {self.database.primer_set.min_length} \
             --maximum-length {self.database.primer_set.max_length} \
             --maximum-n {self.database.primer_set.max_n}
@@ -279,64 +285,78 @@ class DatabaseBuilder:
 
         logging.info(f"Performing export for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        input_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"
-        output_path = "{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_sintax.fasta"
-        if not self.dry_run: self.cleanup_files([ output_path ])
+        if not self.dry_run: self.cleanup_files([ self.files["sintax_file"] ])
 
         self.run_command(f"""
             crabs --export --export-format 'sintax' \
-            --input {input_path} \
-            --output {output_path}
+            --input {self.files['filtered_file']} \
+            --output {self.files['sintax_file']}
         """)
 
     def prepare_train(self):
 
         logging.info(f"Preparing training files for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        input_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt")
-        filled_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled.txt")
-        fixed_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed.txt")
-        rdp_tax_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.txt")
-        rdp_fasta_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta")
-        rdp_taxonomy_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt")
-
         if not self.dry_run:
             self.cleanup_files([
-                filled_file,
-                fixed_file,
-                rdp_tax_file,
-                rdp_fasta_file,
-                rdp_taxonomy_file
+                self.files["filled_file"],
+                self.files["fixed_file"],
+                self.files["rdp_tax_file"],
+                self.files["rdp_fasta_file"],
+                self.files["rdp_taxonomy_file"]
             ])
 
-            tsv_to_filled_taxonomy_tsv(input_file, filled_file)
-            fix_homonyms(filled_file, fixed_file)
-            generate_fasta_and_taxonomy(fixed_file, rdp_fasta_file, rdp_tax_file)
-            lineage2taxtrain(rdp_tax_file, rdp_taxonomy_file)
+            tsv_to_filled_taxonomy_tsv(self.files["filtered_file"], self.files["filled_file"])
+            fix_homonyms(self.files["filled_file"], self.files["fixed_file"])
+            generate_fasta_and_taxonomy(self.files["fixed_file"], self.files["rdp_fasta_file"], self.files["rdp_tax_file"])
+            lineage2taxtrain(self.files["rdp_tax_file"], self.files["rdp_taxonomy_file"])
 
     def train(self):
 
         logging.info(f"Training classifier for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        rdp_fasta_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta")
-        rdp_taxonomy_file = os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt")
-        output_path = f"training_files_{self.database.primer_set.name}"
-        if not self.dry_run: self.cleanup_files([ output_path ])
+        if not self.dry_run: self.cleanup_files([ self.files["training_files"] ])
 
         self.run_command(f"""
-            classifier -Xmx100g train -o {output_path} \
-            -s {rdp_fasta_file} \
-            -t {rdp_taxonomy_file}
+            classifier -Xmx100g train -o {self.files['training_files']} \
+            -s {self.files['rdp_fasta_file']} \
+            -t {self.files['rdp_taxonomy_file']}
         """, force_conda=True)
 
-        # with open(os.path.join(self.working_dir, f"training_files_{primer_set.name}", "rRNAClassifier.properties"), "w") as xml_file:
-        #     xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
-        #     xml_file.write("probabilityList=genus_wordConditionalProbList.txt" + "\n")
-        #     xml_file.write("probabilityIndex=wordConditionalProbIndexArr.txt" + "\n")
-        #     xml_file.write("wordPrior=logWordPrior.txt" + "\n")
-        #     xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
+        with open(os.path.join(self.files["training_files"], "rRNAClassifier.properties"), "w") as xml_file:
+            xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
+            xml_file.write("probabilityList=genus_wordConditionalProbList.txt" + "\n")
+            xml_file.write("probabilityIndex=wordConditionalProbIndexArr.txt" + "\n")
+            xml_file.write("wordPrior=logWordPrior.txt" + "\n")
+            xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
+
+    def count_sequences(self, filename):
+        result = subprocess.run(
+            f'grep ">" "{os.path.join(self.working_dir, filename)}" | wc -l',
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        return int(result.stdout.strip().split()[0])
+
+    def count_lines(self, filename):
+        result = subprocess.run(
+            f'wc -l {os.path.join(self.working_dir, filename)}',
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        return int(result.stdout.strip().split()[0])
+
+    def summarize_files(self):
+        for file in self.files.values():
+            if os.path.exists(file) and file.endswith(".fasta"):
+                logging.info(f"Number of sequences in {file}: {self.count_sequences(file)}")
+            elif os.path.exists(file) and file.endswith(".txt"):
+                logging.info(f"Number of lines in {file}: {self.count_lines(file)}")
 
     def build(self):
+        self.set_file_paths()
         self.import_nucleotide()
         self.pcr()
         self.pga()
@@ -345,3 +365,4 @@ class DatabaseBuilder:
         self.export()
         self.prepare_train()
         self.train()
+        self.summarize_files()
