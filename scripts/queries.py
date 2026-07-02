@@ -31,6 +31,4 @@ for database in databases:
     ref_db.dereplicate(dataset=database.dataset, primer_set=database.primer_set)
     ref_db.filter(dataset=database.dataset, primer_set=database.primer_set)
     ref_db.export(dataset=database.dataset, primer_set=database.primer_set)
-    ref_db.prepare_train(dataset=database.dataset, primer_set=database.primer_set)
-    ref_db.train(dataset=database.dataset, primer_set=database.primer_set)
     # ref_db.cleanup(dataset=database.dataset, primer_set=database.primer_set)

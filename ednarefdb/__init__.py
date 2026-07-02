@@ -1,12 +1,13 @@
 import os
 import subprocess
 import logging
+import gzip
+import shutil
+from datetime import date
 from dataclasses import dataclass
-from ednarefdb.lineage2taxtrain import lineage2taxtrain
-from ednarefdb.addfulllineage import addfulllineage
+from ednarefdb.ncbi_fasta import NcbiFastaBuilder, NcbiFastaBuildResult
+from ednarefdb.report import BuildReportCollector
 import glob
-from Bio import SeqIO
-from ednarefdb.taxonomy import tsv_to_filled_taxonomy_tsv, fix_homonyms, generate_fasta_and_taxonomy
 import shutil
 
 
@@ -53,25 +54,31 @@ class DatabaseBuilder:
         self.dry_run = dry_run
 
         self.set_shell_config()
+        self.crabs_env = self._resolve_crabs_env()
 
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir)
 
+        self.report_collector = BuildReportCollector(
+            working_dir=self.working_dir,
+            dry_run=self.dry_run,
+            environment=self.environment,
+        )
+
+    def path(self, key: str) -> str:
+        return os.path.join(self.working_dir, self.files[key])
+
     def set_file_paths(self):
+        name = self.database.dataset.name
+        primer = self.database.primer_set.name
         self.files = {
-            "dataset_crabs_file": os.path.join(self.working_dir, f"{self.database.dataset.name}.txt"),
-            "pcr_prefilter_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_prefilter.txt"),
-            "pcr_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}.txt"),
-            "pga_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga.txt"),
-            "dereplicate_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep.txt"),
-            "filtered_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered.txt"),
-            "sintax_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_sintax.fasta"),
-            "filled_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled.txt"),
-            "fixed_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed.txt"),
-            "rdp_tax_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.txt"),
-            "rdp_fasta_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp.fasta"),
-            "rdp_taxonomy_file": os.path.join(self.working_dir, f"{self.database.dataset.name}_{self.database.primer_set.name}_pga_derep_filtered_filled_fixed_rdp_taxonomy.txt"),
-            "training_files": os.path.join(self.working_dir, f"training_files_{self.database.primer_set.name}")
+            "dataset_crabs_file": f"{name}.txt",
+            "pcr_prefilter_file": f"{name}_{primer}_prefilter.txt",
+            "pcr_file": f"{name}_{primer}.txt",
+            "pga_file": f"{name}_{primer}_pga.txt",
+            "dereplicate_file": f"{name}_{primer}_pga_derep.txt",
+            "filtered_file": f"{name}_{primer}_pga_derep_filtered.txt",
+            "sintax_file": f"{name}_{primer}_pga_derep_filtered_sintax.fasta",
         }
 
     def set_shell_config(self):
@@ -89,8 +96,48 @@ class DatabaseBuilder:
         else:
             raise RuntimeError("Could not determine shell")
 
+    def _crabs_available(self, env: dict[str, str]) -> bool:
+        result = subprocess.run(
+            "crabs --help",
+            shell=True,
+            executable=self.shell_executable,
+            env=env,
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def _resolve_crabs_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        if self._crabs_available(env):
+            return env
+
+        result = subprocess.run(
+            ["pyenv", "whence", "crabs"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            pyenv_version = result.stdout.strip().splitlines()[0]
+            env["PYENV_VERSION"] = pyenv_version
+            if self._crabs_available(env):
+                logging.info(f"Using crabs from pyenv {pyenv_version}")
+                return env
+
+        raise RuntimeError(
+            "crabs not found on PATH. Install crabs, set environment='conda', "
+            "or use a pyenv version that provides it."
+        )
+
     def run_command_base(self, command):
-        subprocess.run(command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
+        result = subprocess.run(
+            command,
+            cwd=self.working_dir,
+            shell=True,
+            executable=self.shell_executable,
+            env=self.crabs_env,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {result.returncode}")
 
     # def run_command_conda(self, command):
     #     logging.info(command)
@@ -99,20 +146,27 @@ class DatabaseBuilder:
     def run_command_conda(self, command):
         full_command = f"source {self.shell_config} && source $(conda info --base)/etc/profile.d/conda.sh && conda activate crabs && {command}"
         logging.info(full_command)
-        subprocess.run(
+        result = subprocess.run(
             full_command,
-            cwd=self.working_dir, 
-            shell=True, 
+            cwd=self.working_dir,
+            shell=True,
             executable=self.shell_executable
         )
+        if result.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {result.returncode}")
 
     def run_command_docker(self, command):
         full_command = f"docker run --rm -it -v $(pwd):/data --workdir='/data' quay.io/swordfish/crabs:0.1.4 {command}"
         logging.info(full_command)
-        subprocess.run(full_command, cwd=self.working_dir, shell=True, executable=self.shell_executable)
+        result = subprocess.run(
+            full_command, cwd=self.working_dir, shell=True, executable=self.shell_executable
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {result.returncode}")
 
     def run_command(self, command, force_conda=False):
         logging.info(command)
+        self.report_collector.record_command(command)
         if not self.dry_run:
             if self.environment == "conda" or force_conda:
                 self.run_command_conda(command)
@@ -162,173 +216,145 @@ class DatabaseBuilder:
 
         logging.info(f"Importing fasta for {self.database.dataset.name}")
 
-        if not self.dry_run: self.cleanup_files([ self.files["dataset_crabs_file"] ])
+        with self.report_collector.step("Import"):
+            if not self.dry_run: self.cleanup_files([ self.files["dataset_crabs_file"] ])
 
-        if self.database.dataset.files is not None:
-            temp_files = []
+            if self.database.dataset.files is not None:
+                temp_files = []
 
-            for i, file in enumerate(self.database.dataset.files):
-                temp_output_path = f"{self.database.dataset.name}_{i}.txt"
-                temp_files.append(temp_output_path)
+                for i, file in enumerate(self.database.dataset.files):
+                    temp_output_path = f"{self.database.dataset.name}_{i}.txt"
+                    temp_files.append(temp_output_path)
+                    self.run_command(f"""
+                        crabs --import \
+                        --import-format {file.type} \
+                        --input {file.path} \
+                        --names names.dmp \
+                        --nodes nodes.dmp \
+                        --acc2tax nucl_gb.accession2taxid \
+                        --output {temp_output_path} \
+                        --ranks 'domain;phylum;class;order;family;genus;species'
+                    """)
+
+                if len(temp_files) > 1:
+                    temp_files_concat = ";".join(temp_files)
+                    self.run_command(f"""
+                        crabs --merge \
+                        --input '{temp_files_concat}' \
+                        --uniq \
+                        --output {self.files["dataset_crabs_file"]}
+                    """)
+                else:
+                    if not self.dry_run:
+                        os.rename(
+                            os.path.join(self.working_dir, temp_files[0]),
+                            self.path("dataset_crabs_file"),
+                        )
+
+            else:
+                input_path = f"{self.database.dataset.name}.fasta"
                 self.run_command(f"""
                     crabs --import \
-                    --import-format {file.type} \
-                    --input {file.path} \
+                    --input {input_path} \
+                    --import-format {self.database.dataset.type} \
                     --names names.dmp \
                     --nodes nodes.dmp \
                     --acc2tax nucl_gb.accession2taxid \
-                    --output {temp_output_path} \
-                    --ranks 'domain;phylum;class;order;family;genus;species'
+                    --output {self.files["dataset_crabs_file"]} \
+                    --ranks 'domain,phylum,class,order,family,genus,species'
                 """)
-
-            if len(temp_files) > 1:
-                temp_files_concat = ";".join(temp_files)
-                self.run_command(f"""
-                    crabs --merge \
-                    --input '{temp_files_concat}' \
-                    --uniq \
-                    --output {self.files["dataset_crabs_file"]}
-                """)
-            else:
-                if not self.dry_run:
-                    os.rename(os.path.join(self.working_dir, temp_files[0]), os.path.join(self.working_dir, self.files["dataset_crabs_file"]))
-
-        else:
-            input_path = f"{self.database.dataset.name}.fasta"
-            self.run_command(f"""
-                crabs --import \
-                --input {input_path} \
-                --import-format {self.database.dataset.type} \
-                --names names.dmp \
-                --nodes nodes.dmp \
-                --acc2tax nucl_gb.accession2taxid \
-                --output {self.files["dataset_crabs_file"]} \
-                --ranks 'domain,phylum,class,order,family,genus,species'
-            """)
 
     def pcr(self):
 
         logging.info(f"Performing in silico PCR for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        if not self.dry_run:
-            self.cleanup_files([
-                self.files["pcr_prefilter_file"],
-                self.files["pcr_file"]
-            ])
+        with self.report_collector.step("In-silico PCR"):
+            if not self.dry_run:
+                self.cleanup_files([
+                    self.files["pcr_prefilter_file"],
+                    self.files["pcr_file"]
+                ])
 
-        self.run_command(f"""
-            crabs --in-silico-pcr \
-            --input {self.files['dataset_crabs_file']} \
-            --threads 4 \
-            --mismatch {self.database.primer_set.mismatch} \
-            --output {self.files['pcr_prefilter_file']} \
-            --forward {self.database.primer_set.fwd} \
-            --reverse {self.database.primer_set.rev}
-        """)
+            self.run_command(f"""
+                crabs --in-silico-pcr \
+                --input {self.files['dataset_crabs_file']} \
+                --threads 4 \
+                --mismatch {self.database.primer_set.mismatch} \
+                --output {self.files['pcr_prefilter_file']} \
+                --forward {self.database.primer_set.fwd} \
+                --reverse {self.database.primer_set.rev}
+            """)
 
-        self.run_command(f"""
-            crabs --filter \
-            --input {self.files['pcr_prefilter_file']} \
-            --output {self.files['pcr_file']} \
-            --minimum-length {self.database.primer_set.min_length} \
-            --maximum-length {self.database.primer_set.max_length} \
-            --maximum-n {self.database.primer_set.max_n}
-        """)
+            self.run_command(f"""
+                crabs --filter \
+                --input {self.files['pcr_prefilter_file']} \
+                --output {self.files['pcr_file']} \
+                --minimum-length {self.database.primer_set.min_length} \
+                --maximum-length {self.database.primer_set.max_length} \
+                --maximum-n {self.database.primer_set.max_n}
+            """)
 
 
     def pga(self):
 
         logging.info(f"Performing PGA for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        if not self.dry_run: self.cleanup_files([ self.files['pga_file'] ])
+        with self.report_collector.step("PGA"):
+            if not self.dry_run: self.cleanup_files([ self.files['pga_file'] ])
 
-        self.run_command(f"""
-            crabs --pairwise-global-alignment \
-            --input {self.files['dataset_crabs_file']} \
-            --output {self.files['pga_file']} \
-            --amplicons {self.files['pcr_file']} \
-            --forward {self.database.primer_set.fwd} \
-            --reverse {self.database.primer_set.rev} \
-            --percent-identity {self.database.primer_set.pga_percid} \
-            --coverage 1
-        """)
+            self.run_command(f"""
+                crabs --pairwise-global-alignment \
+                --input {self.files['dataset_crabs_file']} \
+                --output {self.files['pga_file']} \
+                --amplicons {self.files['pcr_file']} \
+                --forward {self.database.primer_set.fwd} \
+                --reverse {self.database.primer_set.rev} \
+                --percent-identity {self.database.primer_set.pga_percid} \
+                --coverage 1
+            """)
 
     def dereplicate(self):
 
         logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        if not self.dry_run: self.cleanup_files([ self.files['dereplicate_file'] ])
+        with self.report_collector.step("Dereplicate"):
+            if not self.dry_run: self.cleanup_files([ self.files['dereplicate_file'] ])
 
-        self.run_command(f"""
-            crabs --dereplicate \
-            --input {self.files['pga_file']} \
-            --output {self.files['dereplicate_file']} \
-            --dereplication-method 'unique_species'
-        """)
+            self.run_command(f"""
+                crabs --dereplicate \
+                --input {self.files['pga_file']} \
+                --output {self.files['dereplicate_file']} \
+                --dereplication-method 'unique_species'
+            """)
 
     def filter(self):
 
         logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        if not self.dry_run: self.cleanup_files([ self.files["filtered_file"] ])
+        with self.report_collector.step("Filter"):
+            if not self.dry_run: self.cleanup_files([ self.files["filtered_file"] ])
 
-        self.run_command(f"""
-            crabs --filter \
-            --input {self.files['dereplicate_file']} \
-            --output {self.files['filtered_file']} \
-            --minimum-length {self.database.primer_set.min_length} \
-            --maximum-length {self.database.primer_set.max_length} \
-            --maximum-n {self.database.primer_set.max_n}
-        """)
+            self.run_command(f"""
+                crabs --filter \
+                --input {self.files['dereplicate_file']} \
+                --output {self.files['filtered_file']} \
+                --minimum-length {self.database.primer_set.min_length} \
+                --maximum-length {self.database.primer_set.max_length} \
+                --maximum-n {self.database.primer_set.max_n}
+            """)
 
     def export(self):
 
         logging.info(f"Performing export for {self.database.dataset.name}_{self.database.primer_set.name}")
 
-        if not self.dry_run: self.cleanup_files([ self.files["sintax_file"] ])
+        with self.report_collector.step("SINTAX export"):
+            if not self.dry_run: self.cleanup_files([ self.files["sintax_file"] ])
 
-        self.run_command(f"""
-            crabs --export --export-format 'sintax' \
-            --input {self.files['filtered_file']} \
-            --output {self.files['sintax_file']}
-        """)
-
-    def prepare_train(self):
-
-        logging.info(f"Preparing training files for {self.database.dataset.name}_{self.database.primer_set.name}")
-
-        if not self.dry_run:
-            self.cleanup_files([
-                self.files["filled_file"],
-                self.files["fixed_file"],
-                self.files["rdp_tax_file"],
-                self.files["rdp_fasta_file"],
-                self.files["rdp_taxonomy_file"]
-            ])
-
-            tsv_to_filled_taxonomy_tsv(self.files["filtered_file"], self.files["filled_file"])
-            fix_homonyms(self.files["filled_file"], self.files["fixed_file"])
-            generate_fasta_and_taxonomy(self.files["fixed_file"], self.files["rdp_fasta_file"], self.files["rdp_tax_file"])
-            lineage2taxtrain(self.files["rdp_tax_file"], self.files["rdp_taxonomy_file"])
-
-    def train(self):
-
-        logging.info(f"Training classifier for {self.database.dataset.name}_{self.database.primer_set.name}")
-
-        if not self.dry_run: self.cleanup_files([ self.files["training_files"] ])
-
-        self.run_command(f"""
-            classifier -Xmx100g train -o {self.files['training_files']} \
-            -s {self.files['rdp_fasta_file']} \
-            -t {self.files['rdp_taxonomy_file']}
-        """, force_conda=True)
-
-        with open(os.path.join(self.files["training_files"], "rRNAClassifier.properties"), "w") as xml_file:
-            xml_file.write("bergeyTree=bergeyTrainingTree.xml" + "\n")
-            xml_file.write("probabilityList=genus_wordConditionalProbList.txt" + "\n")
-            xml_file.write("probabilityIndex=wordConditionalProbIndexArr.txt" + "\n")
-            xml_file.write("wordPrior=logWordPrior.txt" + "\n")
-            xml_file.write("classifierVersion=RDP Naive Bayesian rRNA Classifier Version ?")
+            self.run_command(f"""
+                crabs --export --export-format 'sintax' \
+                --input {self.files['filtered_file']} \
+                --output {self.files['sintax_file']}
+            """)
 
     def count_sequences(self, filename):
         result = subprocess.run(
@@ -350,19 +376,45 @@ class DatabaseBuilder:
 
     def summarize_files(self):
         for file in self.files.values():
-            if os.path.exists(file) and file.endswith(".fasta"):
-                logging.info(f"Number of sequences in {file}: {self.count_sequences(file)}")
-            elif os.path.exists(file) and file.endswith(".txt"):
-                logging.info(f"Number of lines in {file}: {self.count_lines(file)}")
+            full_path = os.path.join(self.working_dir, file)
+            if os.path.exists(full_path) and file.endswith(".fasta"):
+                logging.info(f"Number of sequences in {full_path}: {self.count_sequences(file)}")
+            elif os.path.exists(full_path) and file.endswith(".txt"):
+                logging.info(f"Number of lines in {full_path}: {self.count_lines(file)}")
+
+    def generate_report(self) -> str:
+        self.report_collector.set_database(self.database)
+        report_path = self.report_collector.write_report(self.files)
+        logging.info(f"Build report written to {report_path}")
+        return report_path
+
+    def compress_sintax(self, datestamp: str | None = None) -> str:
+        source = self.path("sintax_file")
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"SINTAX output not found: {source}")
+
+        stamp = datestamp or date.today().strftime("%Y%m%d")
+        stem = self.files["sintax_file"].removesuffix(".fasta")
+        output_name = f"{stem}_{stamp}.fasta.gz"
+        output_path = os.path.join(self.working_dir, output_name)
+
+        with open(source, "rb") as handle_in:
+            with gzip.open(output_path, "wb") as handle_out:
+                shutil.copyfileobj(handle_in, handle_out)
+
+        logging.info(f"Compressed SINTAX output to {output_path}")
+        return output_path
 
     def build(self):
         self.set_file_paths()
+        self.report_collector.set_database(self.database)
+        self.report_collector.begin_build()
         self.import_nucleotide()
         self.pcr()
         self.pga()
         self.dereplicate()
         self.filter()
         self.export()
-        self.prepare_train()
-        self.train()
+        self.report_collector.finish_build()
         self.summarize_files()
+        self.generate_report()
