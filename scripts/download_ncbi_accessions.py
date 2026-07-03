@@ -8,6 +8,7 @@ Example:
     python scripts/download_ncbi_accessions.py --email you@example.com --preset 12s
     python scripts/download_ncbi_accessions.py --email you@example.com --preset 16s_eukaryotic
     python scripts/download_ncbi_accessions.py --email you@example.com --preset 16s_prokaryotic
+    python scripts/download_ncbi_accessions.py --email you@example.com --preset 28s
     python scripts/download_ncbi_accessions.py --email you@example.com --preset coi --fetch-sequences
     python scripts/download_ncbi_accessions.py --email you@example.com --query '16S[All Fields] AND ...'
 """
@@ -50,6 +51,12 @@ PRESET_QUERIES = {
         '(Bacteria[Organism] OR Archaea[Organism]) AND (16S[All Fields] OR "16S rRNA"[All Fields] '
         'OR "16S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
         'AND ("50"[SLEN] : "50000"[SLEN])'
+    ),
+    "28s": (
+        '("Eukaryota"[Organism]) AND (28S[All Fields] OR "28S rRNA"[All Fields] '
+        'OR "28S ribosomal RNA"[All Fields] OR "large subunit ribosomal RNA"[All Fields] OR LSU[Title]) '
+        'AND ribosomal[All Fields] AND ("50"[SLEN] : "50000"[SLEN]) '
+        "NOT (mitochondrion[filter] OR chloroplast[filter])"
     ),
 }
 
