@@ -43,6 +43,14 @@ class NucleotideDataset:
 class ReferenceDatabase:
     dataset: NucleotideDataset
     primer_set: PrimerSet
+    suffix: str | None = None
+
+    @property
+    def build_stem(self) -> str:
+        stem = f"{self.dataset.name}_{self.primer_set.name}"
+        if self.suffix:
+            stem = f"{stem}_{self.suffix}"
+        return stem
 
 
 class DatabaseBuilder:
@@ -70,15 +78,15 @@ class DatabaseBuilder:
 
     def set_file_paths(self):
         name = self.database.dataset.name
-        primer = self.database.primer_set.name
+        stem = self.database.build_stem
         self.files = {
             "dataset_crabs_file": f"{name}.txt",
-            "pcr_prefilter_file": f"{name}_{primer}_prefilter.txt",
-            "pcr_file": f"{name}_{primer}.txt",
-            "pga_file": f"{name}_{primer}_pga.txt",
-            "dereplicate_file": f"{name}_{primer}_pga_derep.txt",
-            "filtered_file": f"{name}_{primer}_pga_derep_filtered.txt",
-            "sintax_file": f"{name}_{primer}_pga_derep_filtered_sintax.fasta",
+            "pcr_prefilter_file": f"{stem}_prefilter.txt",
+            "pcr_file": f"{stem}.txt",
+            "pga_file": f"{stem}_pga.txt",
+            "dereplicate_file": f"{stem}_pga_derep.txt",
+            "filtered_file": f"{stem}_pga_derep_filtered.txt",
+            "sintax_file": f"{stem}_pga_derep_filtered_sintax.fasta",
         }
 
     def set_shell_config(self):
@@ -266,7 +274,7 @@ class DatabaseBuilder:
 
     def pcr(self):
 
-        logging.info(f"Performing in silico PCR for {self.database.dataset.name}_{self.database.primer_set.name}")
+        logging.info(f"Performing in silico PCR for {self.database.build_stem}")
 
         with self.report_collector.step("In-silico PCR"):
             if not self.dry_run:
@@ -297,7 +305,7 @@ class DatabaseBuilder:
 
     def pga(self):
 
-        logging.info(f"Performing PGA for {self.database.dataset.name}_{self.database.primer_set.name}")
+        logging.info(f"Performing PGA for {self.database.build_stem}")
 
         with self.report_collector.step("PGA"):
             if not self.dry_run: self.cleanup_files([ self.files['pga_file'] ])
@@ -315,7 +323,7 @@ class DatabaseBuilder:
 
     def dereplicate(self):
 
-        logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
+        logging.info(f"Performing cleanup for {self.database.build_stem}")
 
         with self.report_collector.step("Dereplicate"):
             if not self.dry_run: self.cleanup_files([ self.files['dereplicate_file'] ])
@@ -329,7 +337,7 @@ class DatabaseBuilder:
 
     def filter(self):
 
-        logging.info(f"Performing cleanup for {self.database.dataset.name}_{self.database.primer_set.name}")
+        logging.info(f"Performing cleanup for {self.database.build_stem}")
 
         with self.report_collector.step("Filter"):
             if not self.dry_run: self.cleanup_files([ self.files["filtered_file"] ])
@@ -345,7 +353,7 @@ class DatabaseBuilder:
 
     def export(self):
 
-        logging.info(f"Performing export for {self.database.dataset.name}_{self.database.primer_set.name}")
+        logging.info(f"Performing export for {self.database.build_stem}")
 
         with self.report_collector.step("SINTAX export"):
             if not self.dry_run: self.cleanup_files([ self.files["sintax_file"] ])

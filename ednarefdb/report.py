@@ -61,6 +61,8 @@ class BuildReport:
     primer_name: str
     working_dir: str
     started_at: str
+    suffix: str | None = None
+    build_stem: str = ""
     finished_at: str | None = None
     elapsed_seconds: float | None = None
     dry_run: bool = False
@@ -463,9 +465,12 @@ def render_html(report: BuildReport) -> str:
             filtered_step.count,
         )
 
+    display_name = report.build_stem or f"{report.dataset_name}_{report.primer_name}"
     metadata = {
         "dataset": report.dataset_name,
         "primer_set": report.primer_name,
+        "suffix": report.suffix,
+        "build_stem": display_name,
         "working_dir": report.working_dir,
         "started_at": report.started_at,
         "finished_at": report.finished_at,
@@ -496,7 +501,7 @@ def render_html(report: BuildReport) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reference DB build report — {html.escape(report.dataset_name)} / {html.escape(report.primer_name)}</title>
+  <title>Reference DB build report — {html.escape(display_name)}</title>
   <style>
     :root {{
       --bg: #f6f8fb;
@@ -651,7 +656,7 @@ def render_html(report: BuildReport) -> str:
     <section class="hero">
       <h1>Reference database build report</h1>
       <p class="muted">
-        {html.escape(report.dataset_name)} / {html.escape(report.primer_name)}
+        {html.escape(display_name)}
         · generated {html.escape(report.finished_at or report.started_at)}
       </p>
       <div class="hero-grid">
@@ -750,6 +755,8 @@ class BuildReportCollector:
         primer = database.primer_set
         self.report.dataset_name = dataset.name
         self.report.primer_name = primer.name
+        self.report.suffix = database.suffix
+        self.report.build_stem = database.build_stem
         self.report.primer_fwd = primer.fwd
         self.report.primer_rev = primer.rev
         self.report.primer_min_length = primer.min_length
@@ -779,12 +786,15 @@ class BuildReportCollector:
         )
 
     def manifest_path(self) -> Path:
-        return Path(self.working_dir) / f"{self.report.dataset_name}_{self.report.primer_name}_build_manifest.json"
+        stem = self.report.build_stem or f"{self.report.dataset_name}_{self.report.primer_name}"
+        return Path(self.working_dir) / f"{stem}_build_manifest.json"
 
     def save_manifest(self) -> None:
         payload = {
             "dataset_name": self.report.dataset_name,
             "primer_name": self.report.primer_name,
+            "suffix": self.report.suffix,
+            "build_stem": self.report.build_stem,
             "started_at": self.report.started_at,
             "finished_at": self.report.finished_at,
             "elapsed_seconds": self.report.elapsed_seconds,
@@ -867,7 +877,8 @@ class BuildReportCollector:
         if self.report.commands:
             self.save_manifest()
 
-        report_name = f"{self.report.dataset_name}_{self.report.primer_name}_build_report.html"
+        stem = self.report.build_stem or f"{self.report.dataset_name}_{self.report.primer_name}"
+        report_name = f"{stem}_build_report.html"
         report_path = Path(self.working_dir) / report_name
         report_path.write_text(render_html(self.report), encoding="utf-8")
         self.report.report_path = str(report_path)

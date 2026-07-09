@@ -11,6 +11,8 @@ Example:
     python scripts/download_ncbi_old.py --email you@example.com --preset 12s
     python scripts/download_ncbi_old.py --email you@example.com --preset 16s_eukaryotic
     python scripts/download_ncbi_old.py --email you@example.com --preset 16s_prokaryotic
+    python scripts/download_ncbi_old.py --email you@example.com --preset 16s_prokaryotic_slim
+    python scripts/download_ncbi_old.py --email you@example.com --preset 16s_prokaryotic_refseq
     python scripts/download_ncbi_old.py --email you@example.com --preset 28s
     python scripts/download_ncbi_old.py --email you@example.com --preset coi --workers 5 --api-key KEY
 """
@@ -60,6 +62,16 @@ PRESET_QUERIES = {
         '(Bacteria[Organism] OR Archaea[Organism]) AND (16S[All Fields] OR "16S rRNA"[All Fields] '
         'OR "16S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
         'AND ("50"[SLEN] : "50000"[SLEN])'
+    ),
+    "16s_prokaryotic_slim": (
+        '(Bacteria[Organism] OR Archaea[Organism]) AND (16S[All Fields] OR "16S rRNA"[All Fields] '
+        'OR "16S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
+        'AND ("1200"[SLEN] : "2000"[SLEN])'
+    ),
+    "16s_prokaryotic_refseq": (
+        '(Bacteria[Organism] OR Archaea[Organism]) AND (16S[All Fields] OR "16S rRNA"[All Fields] '
+        'OR "16S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
+        'AND ("1000"[SLEN] : "2000"[SLEN]) AND srcdb_refseq[PROP]'
     ),
     "28s": (
         '("Eukaryota"[Organism]) AND (28S[All Fields] OR "28S rRNA"[All Fields] '
