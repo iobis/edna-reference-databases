@@ -53,6 +53,21 @@ PRESET_QUERIES = {
         'OR "12S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
         'AND ("50"[SLEN] : "50000"[SLEN])'
     ),
+    "12s_advanced": (
+        '(('
+        '(12S[All Fields] OR "12S rRNA"[All Fields] OR "12S ribosomal RNA"[All Fields]) '
+        'AND (mitochondrion[filter] OR mitochondrial[All Fields] OR mitochondrion[All Fields])'
+        ') OR ('
+        '(12S[Title] OR "12S rRNA"[Title] OR "12S ribosomal RNA"[Title]) '
+        'AND (gene[Title] OR rRNA[Title])'
+        ') OR ('
+        'mitochondrion[filter] AND ('
+        'mitochondrion[Title] OR "partial genome"[Title] OR "complete genome"[Title] '
+        'OR "genome assembly"[Title]'
+        ')'
+        ')) AND ("50"[SLEN] : "50000"[SLEN])'
+    ),
+
     "16s_eukaryotic": (
         '("Eukaryota"[Organism]) AND (16S[All Fields] OR "16S rRNA"[All Fields] '
         'OR "16S ribosomal RNA"[All Fields]) AND ribosomal[All Fields] '
