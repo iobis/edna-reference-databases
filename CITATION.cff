@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: If you use this work, please cite it as below.
+title: eDNA Reference Databases
+type: software
+abstract: Download reference databases
+url: https://github.com/iobis/edna-reference-databases
+license: MIT
+authors:
+  - given-names: Pieter
+    family-names: Provoost
+    orcid: "https://orcid.org/0000-0002-4236-0384"
+  - alias: SSuominen1
+    orcid: "https://orcid.org/0000-0001-9401-8460"
+  - family-names: SSuominen1
+  - name: Intergovernmental Oceanographic Commission of UNESCO
+    alias: IOC-UNESCO
+    website: "https://obis.org"
+date-released: 2025-08-03
