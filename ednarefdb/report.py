@@ -82,8 +82,8 @@ class BuildReport:
 
 PIPELINE_STEPS: list[tuple[str, str, bool]] = [
     ("Import", "dataset_crabs_file", True),
-    ("In-silico PCR (prefilter)", "pcr_prefilter_file", True),
-    ("In-silico PCR (length filter)", "pcr_file", True),
+    ("In-silico PCR (with primers)", "pcr_prefilter_file", True),
+    ("Length filter on PCR products (with primers)", "pcr_file", True),
     ("PGA", "pga_file", False),
     ("Dereplicate", "dereplicate_file", True),
     ("Filter", "filtered_file", True),
@@ -235,39 +235,32 @@ def format_axis_count(value: float) -> str:
 
 
 
-def select_length_ticks(min_bp: int, max_bp: int, max_ticks: int = 6) -> list[int]:
+def select_length_ticks(min_bp: int, max_bp: int, target_ticks: int = 12) -> list[int]:
     if max_bp <= min_bp:
         return [min_bp]
-    span = max_bp - min_bp
-    raw_step = span / (max_ticks - 1)
-    if raw_step <= 5:
-        step = 5
-    elif raw_step <= 10:
-        step = 10
-    elif raw_step <= 25:
-        step = 25
-    elif raw_step <= 50:
-        step = 50
-    elif raw_step <= 100:
-        step = 100
-    elif raw_step <= 250:
-        step = 250
-    elif raw_step <= 500:
-        step = 500
-    else:
-        step = int(10 ** round(math.log10(raw_step)))
 
-    start = ((min_bp + step - 1) // step) * step
+    span = max_bp - min_bp
+    raw_step = span / max(target_ticks - 1, 1)
+    nice_steps = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+    step = nice_steps[-1]
+    for candidate in nice_steps:
+        if candidate >= raw_step:
+            step = candidate
+            break
+
+    start = (min_bp // step) * step
+    if start < min_bp:
+        start += step
+
     ticks = []
     value = start
-    while value <= max_bp and len(ticks) < max_ticks:
+    while value <= max_bp:
         ticks.append(value)
         value += step
-    if ticks and ticks[0] != min_bp:
-        ticks.insert(0, min_bp)
-    if ticks and ticks[-1] != max_bp:
-        ticks.append(max_bp)
-    return ticks[:max_ticks] if len(ticks) > max_ticks else ticks
+
+    if not ticks:
+        return [min_bp, max_bp]
+    return ticks
 
 
 def render_histogram_svg(stats: LengthStats, title: str, width: int = 1048, height: int = 320) -> str:
@@ -279,14 +272,17 @@ def render_histogram_svg(stats: LengthStats, title: str, width: int = 1048, heig
     margin_left, margin_right, margin_top, margin_bottom = 56, 20, 24, 52
     chart_width = width - margin_left - margin_right
     chart_height = height - margin_top - margin_bottom
-    bar_gap = 2
-    bar_width = max(1, (chart_width - bar_gap * (len(bins) - 1)) / len(bins))
     chart_bottom = margin_top + chart_height
 
+    axis_min = stats.min_length if stats.min_length is not None else bins[0][0]
+    axis_max = stats.max_length if stats.max_length is not None else bins[-1][0] + stats.bin_width
+    length_span = max(axis_max - axis_min, 1)
+    bar_width = max(1.0, (stats.bin_width / length_span) * chart_width)
+
     bars = []
-    for index, (bin_start, count) in enumerate(bins):
+    for bin_start, count in bins:
         bar_height = 0 if max_count == 0 else (count / max_count) * chart_height
-        x = margin_left + index * (bar_width + bar_gap)
+        x = margin_left + ((bin_start - axis_min) / length_span) * chart_width
         y = chart_bottom - bar_height
         bars.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" height="{bar_height:.1f}" '
@@ -309,15 +305,13 @@ def render_histogram_svg(stats: LengthStats, title: str, width: int = 1048, heig
         )
 
     x_ticks = []
-    if stats.min_length is not None and stats.max_length is not None:
-        length_span = max(stats.max_length - stats.min_length, 1)
-        for tick_bp in select_length_ticks(stats.min_length, stats.max_length):
-            x = margin_left + ((tick_bp - stats.min_length) / length_span) * chart_width
-            x_ticks.append(
-                f'<line x1="{x:.1f}" y1="{chart_bottom}" x2="{x:.1f}" y2="{chart_bottom + 4}" class="axis" />'
-                f'<text x="{x:.1f}" y="{chart_bottom + 16}" text-anchor="middle" class="tick-label">'
-                f"{html.escape(str(tick_bp))}</text>"
-            )
+    for tick_bp in select_length_ticks(axis_min, axis_max):
+        x = margin_left + ((tick_bp - axis_min) / length_span) * chart_width
+        x_ticks.append(
+            f'<line x1="{x:.1f}" y1="{chart_bottom}" x2="{x:.1f}" y2="{chart_bottom + 4}" class="axis" />'
+            f'<text x="{x:.1f}" y="{chart_bottom + 16}" text-anchor="middle" class="tick-label">'
+            f"{html.escape(str(tick_bp))}</text>"
+        )
 
     return f"""
     <div class="chart-block">
@@ -380,12 +374,18 @@ def render_funnel_table(steps: list[StepRecord]) -> str:
     for step in steps:
         from_import = retention_pct(step.count, import_baseline)
         note = step_note(step)
+        note_html = f'<div class="muted">{html.escape(note)}</div>' if note else ""
+        retention = (
+            ""
+            if from_import is None or step.file_key == "dataset_crabs_file"
+            else f"{from_import:.1f}%"
+        )
         rows.append(
             "<tr>"
-            f"<td>{html.escape(step.name)}{f'<div class=\"muted\">{html.escape(note)}</div>' if note else ''}</td>"
+            f"<td>{html.escape(step.name)}{note_html}</td>"
             f"<td><code>{html.escape(step.filename)}</code></td>"
             f"<td class='num'>{human_int(step.count)}</td>"
-            f"<td class='num'>{'' if from_import is None or step.file_key == 'dataset_crabs_file' else f'{from_import:.1f}%'}</td>"
+            f"<td class='num'>{retention}</td>"
             "</tr>"
         )
 
@@ -451,11 +451,26 @@ def render_html(report: BuildReport) -> str:
 
     charts = []
     if pcr_prefilter_step and pcr_prefilter_step.length_stats:
-        charts.append(render_histogram_svg(pcr_prefilter_step.length_stats, "Amplicon length after in-silico PCR"))
+        charts.append(
+            render_histogram_svg(
+                pcr_prefilter_step.length_stats,
+                "After in-silico PCR (with primers, before length filter)",
+            )
+        )
     if pcr_step and pcr_step.length_stats:
-        charts.append(render_histogram_svg(pcr_step.length_stats, "Amplicon length after PCR length filter"))
+        charts.append(
+            render_histogram_svg(
+                pcr_step.length_stats,
+                "After length filter on PCR products (still with primers)",
+            )
+        )
     if filtered_step and filtered_step.length_stats:
-        charts.append(render_histogram_svg(filtered_step.length_stats, "Amplicon length in final filtered set"))
+        charts.append(
+            render_histogram_svg(
+                filtered_step.length_stats,
+                "Final filtered set (after PGA; primers removed)",
+            )
+        )
 
     taxonomy = ""
     if filtered_step and filtered_step.phylum_counts and filtered_step.count:

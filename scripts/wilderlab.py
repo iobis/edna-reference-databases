@@ -48,6 +48,7 @@ primer_set_gf_relaxed.max_length = 193
 primer_set_gf_relaxed_long = primer_set_from_assay("GF", mismatch=4, pga_percid=0.5)
 primer_set_gf_relaxed.max_length = 300
 primer_set_gd = primer_set_from_assay("GD", mismatch=2, pga_percid=0.7)
+primer_set_gc = primer_set_from_assay("GC", mismatch=2, pga_percid=0.7)
 primer_set_wv = primer_set_from_assay("WV", mismatch=2, pga_percid=0.7)
 primer_set_wv_relaxed = primer_set_from_assay("WV", mismatch=4, pga_percid=0.7)
 primer_set_hd = primer_set_from_assay("HD", mismatch=2, pga_percid=0.7)
@@ -71,6 +72,7 @@ database_bx = ReferenceDatabase(dataset_ncbi_18s, primer_set_bx)
 # database_gf_relaxed = ReferenceDatabase(dataset_ncbi_its, primer_set_gf_relaxed)
 database_gf_relaxed_long = ReferenceDatabase(dataset_ncbi_its, primer_set_gf_relaxed_long)
 database_gd = ReferenceDatabase(dataset_ncbi_its, primer_set_gd)
+database_gc = ReferenceDatabase(dataset_ncbi_its, primer_set_gc)
 # database_wv = ReferenceDatabase(dataset_ncbi_16s_eukaryotic, primer_set_wv)
 database_wv_relaxed = ReferenceDatabase(dataset_ncbi_16s_eukaryotic, primer_set_wv_relaxed)
 database_hd = ReferenceDatabase(dataset_ncbi_16s_eukaryotic, primer_set_hd)
@@ -82,22 +84,23 @@ database_ma = ReferenceDatabase(dataset_ncbi_28s, primer_set_ma)
 # builder.ncbi_download_taxonomy()
 
 for database in [
-    database_ci_relaxed,
-    database_rv_advanced,
-    database_lx_advanced,
-    database_lm_advanced,
-    database_bu,
-    database_be,
-    database_bx,
-    database_lx_advanced,
-    database_gf_relaxed_long,
-    database_gd,
-    database_wv_relaxed,
-    database_hd,
-    database_wg,
-    database_mc,
-    database_ma,
-    database_um,
+    # database_ci_relaxed,
+    # database_rv_advanced,
+    # database_lx_advanced,
+    # database_lm_advanced,
+    # database_bu,
+    # database_be,
+    # database_bx,
+    # database_lx_advanced,
+    # database_gf_relaxed_long,
+    # database_gd,
+    # database_gc,
+    # database_wv_relaxed,
+    # database_hd,
+    # database_wg,
+    # database_mc,
+    # database_ma,
+    # database_um,
 ]:
     builder = DatabaseBuilder(database, working_dir="./workdir", environment=None, dry_run=False)
     builder.build()
