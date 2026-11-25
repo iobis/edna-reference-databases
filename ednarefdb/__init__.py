@@ -53,6 +53,83 @@ class ReferenceDatabase:
         return stem
 
 
+def clean_sintax_taxonomy(taxonomy: str) -> tuple[str | None, int]:
+    """Drop ranks whose value is NA. Return None when every rank is NA."""
+    kept = []
+    removed = 0
+    for part in taxonomy.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        rank, separator, value = token.partition(":")
+        if separator and value.strip().casefold() == "na":
+            removed += 1
+            continue
+        kept.append(token)
+    if not kept:
+        return None, removed
+    return ",".join(kept), removed
+
+
+def clean_sintax_header(header: str) -> tuple[str | None, int]:
+    """Remove NA ranks from a SINTAX header. Return None when the lineage is only NA."""
+    newline = "\n" if header.endswith("\n") else ""
+    body = header[1:] if header.startswith(">") else header
+    body = body.strip()
+    marker = ";tax="
+    index = body.find(marker)
+    if index == -1:
+        return f">{body}{newline}", 0
+    taxonomy, removed = clean_sintax_taxonomy(body[index + len(marker):])
+    if taxonomy is None:
+        return None, removed
+    return f">{body[:index]};tax={taxonomy}{newline}", removed
+
+
+def clean_sintax_fasta(path: str) -> tuple[int, int, int]:
+    """Drop NA ranks inside SINTAX lineages and remove records whose lineage is only NA.
+
+    Returns the number of sequences kept, the number dropped, and the number of NA ranks removed.
+    """
+    temporary = f"{path}.cleaning"
+    kept = 0
+    dropped = 0
+    ranks_removed = 0
+    header = None
+    sequence_lines: list[str] = []
+
+    def flush(handle_out):
+        nonlocal header, sequence_lines, kept, dropped, ranks_removed
+        if header is None:
+            return
+        cleaned, removed = clean_sintax_header(header)
+        ranks_removed += removed
+        if cleaned is None:
+            dropped += 1
+        else:
+            handle_out.write(cleaned)
+            handle_out.writelines(sequence_lines)
+            kept += 1
+        header = None
+        sequence_lines = []
+
+    try:
+        with open(path) as handle_in, open(temporary, "w") as handle_out:
+            for line in handle_in:
+                if line.startswith(">"):
+                    flush(handle_out)
+                    header = line
+                elif header is not None:
+                    sequence_lines.append(line)
+            flush(handle_out)
+        os.replace(temporary, path)
+    except Exception:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+        raise
+    return kept, dropped, ranks_removed
+
+
 class DatabaseBuilder:
 
     def __init__(self, database: ReferenceDatabase, working_dir: str, environment: str = "conda", dry_run: bool = False):
@@ -363,6 +440,13 @@ class DatabaseBuilder:
                 --input {self.files['filtered_file']} \
                 --output {self.files['sintax_file']}
             """)
+
+            if not self.dry_run:
+                kept, dropped, removed = clean_sintax_fasta(self.path("sintax_file"))
+                logging.info(
+                    f"SINTAX cleanup: kept {kept} sequences, "
+                    f"dropped {dropped} with only NA ranks, removed {removed} NA ranks"
+                )
 
     def count_sequences(self, filename):
         result = subprocess.run(
